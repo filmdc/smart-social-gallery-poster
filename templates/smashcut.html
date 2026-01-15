@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartGallery: Smash Cut Generator</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='galleryout/favicon.ico') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1a1a1a;
+            --surface-hover: #252525;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --text-color: #f8f9fa;
+            --text-muted: #adb5bd;
+            --border-color: #343a40;
+            --danger-color: #dc3545;
+            --danger-hover: #c82333;
+            --favorite-color: #ffc107;
+            --workflow-color: #28a745;
+            --success-color: #20c997;
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+            margin: 0;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .smashcut-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        header p {
+            color: var(--text-muted);
+            margin: 0 0 1rem 0;
+        }
+
+        header a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        header a:hover {
+            text-decoration: underline;
+        }
+
+        .filter-panel {
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .filter-panel h2 {
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            align-items: end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .filter-group label {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .filter-group select,
+        .filter-group input[type="text"] {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+
+        .filter-group input[type="text"]:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            padding: 0.75rem 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: var(--surface-hover);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--border-color);
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .summary-bar {
+            background: var(--glass-bg);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .summary-stats {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .summary-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .summary-stat .value {
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--primary-color);
+        }
+
+        .summary-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+            min-height: 200px;
+        }
+
+        .preview-item {
+            background: var(--glass-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .preview-item:hover {
+            border-color: var(--glass-border);
+        }
+
+        .preview-item.selected {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .preview-item img {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            display: block;
+        }
+
+        .preview-item-info {
+            padding: 0.75rem;
+        }
+
+        .preview-item-name {
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0.25rem;
+        }
+
+        .preview-item-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .preview-item .favorite-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 1rem;
+        }
+
+        .preview-item .order-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: var(--primary-color);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .output-options {
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .output-options h2 {
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
+        }
+
+        .options-row {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+
+        .option-group {
+            flex: 1;
+            min-width: 150px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .option-group label {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .option-group select,
+        .option-group input {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+
+        .option-group select:focus,
+        .option-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        #custom-resolution {
+            display: none;
+        }
+
+        #custom-resolution .custom-size-inputs {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        #custom-resolution input {
+            width: 80px;
+        }
+
+        .generate-section {
+            text-align: center;
+            padding: 2rem 0;
+        }
+
+        .generate-btn {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+            padding: 1rem 3rem;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Progress Overlay */
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .progress-panel {
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            text-align: center;
+            min-width: 350px;
+            max-width: 90%;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-panel h3 {
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-primary);
+            transition: width 0.3s;
+            border-radius: 6px;
+        }
+
+        .progress-status {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .progress-panel .btn {
+            margin-top: 1rem;
+        }
+
+        /* Tom Select customizations */
+        .ts-wrapper {
+            width: 100%;
+        }
+
+        .ts-control {
+            background: var(--glass-bg) !important;
+            border: 1px solid var(--glass-border) !important;
+            border-radius: 8px !important;
+            color: var(--text-color) !important;
+            min-height: 42px;
+        }
+
+        .ts-control input {
+            color: var(--text-color) !important;
+        }
+
+        .ts-dropdown {
+            background: var(--surface-color) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px !important;
+        }
+
+        .ts-dropdown .option {
+            color: var(--text-color) !important;
+        }
+
+        .ts-dropdown .option:hover,
+        .ts-dropdown .option.active {
+            background: var(--surface-hover) !important;
+        }
+
+        .ts-wrapper.multi .ts-control > div {
+            background: var(--primary-color) !important;
+            color: white !important;
+            border-radius: 4px !important;
+        }
+
+        @media (max-width: 768px) {
+            .smashcut-container {
+                padding: 1rem;
+            }
+
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .options-row {
+                flex-direction: column;
+            }
+
+            .summary-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .summary-actions {
+                justify-content: center;
+            }
+        }
+
+        /* Input file thumbnail styles for TomSelect */
+        .input-file-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 0;
+        }
+
+        .input-file-thumb {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: var(--surface-hover);
+            flex-shrink: 0;
+        }
+
+        .input-file-thumb-placeholder {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface-hover);
+            border-radius: 4px;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .input-file-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Selected item (smaller thumbnail) */
+        .input-file-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .input-file-item .input-file-thumb {
+            width: 24px;
+            height: 24px;
+        }
+
+        .input-file-item .input-file-thumb-placeholder {
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="smashcut-container">
+        <header>
+            <h1>Smash Cut Generator</h1>
+            <p>Create video compilations from your generated content</p>
+            <a href="/galleryout/">Back to Gallery</a>
+        </header>
+
+        <!-- Filter Panel -->
+        <div class="filter-panel">
+            <h2>Filter Videos</h2>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label>Folders</label>
+                    <select id="folder-filter" multiple placeholder="All folders...">
+                        {% for key, folder in folders.items() %}
+                        <option value="{{ key }}">{{ folder.display_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Input Files Referenced</label>
+                    <select id="input-files-filter" multiple placeholder="Any input file...">
+                        <!-- Populated via JS -->
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>LoRAs Used</label>
+                    <select id="lora-filter" multiple placeholder="Any LoRA...">
+                        {% for lora in available_loras %}
+                        <option value="{{ lora }}">{{ lora }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Search in Workflow</label>
+                    <input type="text" id="text-pattern-filter" placeholder="Search workflow JSON...">
+                </div>
+
+                <div class="filter-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="favorites-filter">
+                        <span>Favorites Only</span>
+                    </label>
+                </div>
+
+                <div class="filter-group">
+                    <button id="apply-filters-btn" class="btn btn-primary">
+                        Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Bar -->
+        <div class="summary-bar">
+            <div class="summary-stats">
+                <div class="summary-stat">
+                    <span class="value" id="video-count">0</span>
+                    <span>videos selected</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="value" id="total-duration">00:00</span>
+                    <span>total duration</span>
+                </div>
+            </div>
+            <div class="summary-actions">
+                <button id="select-all-btn" class="btn">Select All</button>
+                <button id="deselect-all-btn" class="btn">Deselect All</button>
+            </div>
+        </div>
+
+        <!-- Preview Grid -->
+        <div id="preview-grid" class="preview-grid">
+            <div class="empty-state">
+                Apply filters to see matching videos
+            </div>
+        </div>
+
+        <!-- Output Options -->
+        <div class="output-options">
+            <h2>Output Settings</h2>
+            <div class="options-row">
+                <div class="option-group">
+                    <label>Resolution</label>
+                    <select id="resolution-option">
+                        <option value="original">Original</option>
+                        <option value="720p">720p (1280x720)</option>
+                        <option value="1080p" selected>1080p (1920x1080)</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+
+                <div class="option-group" id="custom-resolution">
+                    <label>Custom Size</label>
+                    <div class="custom-size-inputs">
+                        <input type="number" id="custom-width" placeholder="Width" value="1920">
+                        <span>x</span>
+                        <input type="number" id="custom-height" placeholder="Height" value="1080">
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <label>Frame Rate</label>
+                    <select id="fps-option">
+                        <option value="original">Original</option>
+                        <option value="24">24 fps</option>
+                        <option value="30" selected>30 fps</option>
+                        <option value="60">60 fps</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label>Quality</label>
+                    <select id="quality-option">
+                        <option value="low">Low (smaller file)</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High (larger file)</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label>Output Filename</label>
+                    <input type="text" id="output-filename" placeholder="smashcut.mp4">
+                </div>
+            </div>
+        </div>
+
+        <!-- Generate Button -->
+        <div class="generate-section">
+            <button id="generate-btn" class="generate-btn" disabled>
+                Generate Smash Cut
+            </button>
+        </div>
+    </div>
+
+    <!-- Progress Overlay -->
+    <div id="progress-overlay" class="progress-overlay" style="display: none;">
+        <div class="progress-panel">
+            <h3 id="progress-message">Generating smash cut...</h3>
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+            </div>
+            <p id="progress-status" class="progress-status">Starting...</p>
+            <a id="download-link" href="#" class="btn btn-primary" style="display: none;">Download Smash Cut</a>
+            <button id="close-progress-btn" class="btn" style="display: none;" onclick="hideProgressOverlay()">Close</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
+    <script>
+        // Initialize Tom Select for multi-selects
+        const folderSelect = new TomSelect('#folder-filter', {
+            plugins: ['remove_button'],
+            placeholder: 'All folders...'
+        });
+
+        // Helper to determine if file is previewable (image/video)
+        function isPreviewableFile(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'jfif', 'mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext);
+        }
+
+        // Helper to get icon for non-previewable files
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            if (['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'].includes(ext)) return '🎵';
+            return '📄';
+        }
+
+        const inputFilesSelect = new TomSelect('#input-files-filter', {
+            plugins: ['remove_button'],
+            placeholder: 'Any input file...',
+            render: {
+                option: function(data, escape) {
+                    const filename = data.value;
+                    if (isPreviewableFile(filename)) {
+                        return `<div class="input-file-option">
+                            <img class="input-file-thumb" src="/galleryout/input_file/${encodeURIComponent(filename)}"
+                                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" loading="lazy">
+                            <div class="input-file-thumb-placeholder" style="display:none;">📷</div>
+                            <span class="input-file-name">${escape(filename)}</span>
+                        </div>`;
+                    } else {
+                        return `<div class="input-file-option">
+                            <div class="input-file-thumb-placeholder">${getFileIcon(filename)}</div>
+                            <span class="input-file-name">${escape(filename)}</span>
+                        </div>`;
+                    }
+                },
+                item: function(data, escape) {
+                    const filename = data.value;
+                    if (isPreviewableFile(filename)) {
+                        return `<div class="input-file-item">
+                            <img class="input-file-thumb" src="/galleryout/input_file/${encodeURIComponent(filename)}"
+                                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" loading="lazy">
+                            <div class="input-file-thumb-placeholder" style="display:none;">📷</div>
+                            <span class="input-file-name">${escape(filename)}</span>
+                        </div>`;
+                    } else {
+                        return `<div class="input-file-item">
+                            <div class="input-file-thumb-placeholder">${getFileIcon(filename)}</div>
+                            <span class="input-file-name">${escape(filename)}</span>
+                        </div>`;
+                    }
+                }
+            }
+        });
+
+        const loraSelect = new TomSelect('#lora-filter', {
+            plugins: ['remove_button'],
+            placeholder: 'Any LoRA...'
+        });
+
+        // State
+        let filteredVideos = [];
+        let selectedVideoIds = new Set();
+
+        // Load available input files
+        fetch('/galleryout/smashcut/input_files')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    data.input_files.forEach(file => {
+                        inputFilesSelect.addOption({ value: file, text: file });
+                    });
+                }
+            })
+            .catch(err => console.error('Failed to load input files:', err));
+
+        // Apply Filters
+        document.getElementById('apply-filters-btn').addEventListener('click', applyFilters);
+
+        // Also allow Enter key in text search
+        document.getElementById('text-pattern-filter').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') applyFilters();
+        });
+
+        function applyFilters() {
+            const filters = {
+                folder_keys: folderSelect.getValue(),
+                input_files: inputFilesSelect.getValue(),
+                loras: loraSelect.getValue(),
+                text_pattern: document.getElementById('text-pattern-filter').value,
+                favorites_only: document.getElementById('favorites-filter').checked
+            };
+
+            document.getElementById('apply-filters-btn').disabled = true;
+            document.getElementById('apply-filters-btn').textContent = 'Loading...';
+
+            fetch('/galleryout/smashcut/filter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    filteredVideos = data.videos;
+                    // Select all by default
+                    selectedVideoIds = new Set(filteredVideos.map(v => v.id));
+                    renderPreview();
+                    updateSummary();
+                }
+            })
+            .catch(err => console.error('Filter failed:', err))
+            .finally(() => {
+                document.getElementById('apply-filters-btn').disabled = false;
+                document.getElementById('apply-filters-btn').textContent = 'Apply Filters';
+            });
+        }
+
+        function renderPreview() {
+            const grid = document.getElementById('preview-grid');
+
+            if (filteredVideos.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No videos match your filters</div>';
+                return;
+            }
+
+            // Get order for selected videos
+            const selectedArray = Array.from(selectedVideoIds);
+
+            grid.innerHTML = filteredVideos.map(video => {
+                const isSelected = selectedVideoIds.has(video.id);
+                const orderIndex = selectedArray.indexOf(video.id);
+
+                return `
+                    <div class="preview-item ${isSelected ? 'selected' : ''}"
+                         data-id="${video.id}"
+                         onclick="toggleVideoSelection('${video.id}')">
+                        ${isSelected && orderIndex >= 0 ? `<span class="order-badge">${orderIndex + 1}</span>` : ''}
+                        ${video.is_favorite ? '<span class="favorite-badge">&#9733;</span>' : ''}
+                        <img src="${video.thumbnail_url}" alt="${video.name}" loading="lazy">
+                        <div class="preview-item-info">
+                            <div class="preview-item-name" title="${video.name}">${video.name}</div>
+                            <div class="preview-item-meta">
+                                <span>${video.duration || 'Unknown'}</span>
+                                <span>${video.dimensions || ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleVideoSelection(id) {
+            if (selectedVideoIds.has(id)) {
+                selectedVideoIds.delete(id);
+            } else {
+                selectedVideoIds.add(id);
+            }
+            renderPreview();
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const selectedVideos = filteredVideos.filter(v => selectedVideoIds.has(v.id));
+            const totalSeconds = selectedVideos.reduce((sum, v) => sum + (v.duration_seconds || 0), 0);
+
+            document.getElementById('video-count').textContent = selectedVideos.length;
+            document.getElementById('total-duration').textContent = formatDuration(totalSeconds);
+            document.getElementById('generate-btn').disabled = selectedVideos.length === 0;
+        }
+
+        function formatDuration(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // Select All / Deselect All
+        document.getElementById('select-all-btn').addEventListener('click', () => {
+            selectedVideoIds = new Set(filteredVideos.map(v => v.id));
+            renderPreview();
+            updateSummary();
+        });
+
+        document.getElementById('deselect-all-btn').addEventListener('click', () => {
+            selectedVideoIds.clear();
+            renderPreview();
+            updateSummary();
+        });
+
+        // Custom resolution toggle
+        document.getElementById('resolution-option').addEventListener('change', (e) => {
+            document.getElementById('custom-resolution').style.display =
+                e.target.value === 'custom' ? 'block' : 'none';
+        });
+
+        // Generate Smash Cut
+        document.getElementById('generate-btn').addEventListener('click', generateSmashCut);
+
+        function generateSmashCut() {
+            // Preserve order based on selection
+            const videoIds = Array.from(selectedVideoIds);
+            const resolution = document.getElementById('resolution-option').value;
+
+            let resolutionOption = resolution;
+            if (resolution === 'custom') {
+                resolutionOption = {
+                    width: parseInt(document.getElementById('custom-width').value) || 1920,
+                    height: parseInt(document.getElementById('custom-height').value) || 1080
+                };
+            }
+
+            const fpsValue = document.getElementById('fps-option').value;
+            const options = {
+                resolution: resolutionOption,
+                fps: fpsValue === 'original' ? 'original' : parseInt(fpsValue),
+                quality: document.getElementById('quality-option').value,
+                output_filename: document.getElementById('output-filename').value || 'smashcut.mp4'
+            };
+
+            // Start generation
+            fetch('/galleryout/smashcut/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_ids: videoIds, options: options })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showProgressOverlay();
+                    pollJobStatus(data.job_id);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => {
+                console.error('Generation failed:', err);
+                alert('Failed to start generation. Please try again.');
+            });
+        }
+
+        function showProgressOverlay() {
+            document.getElementById('progress-overlay').style.display = 'flex';
+            document.getElementById('progress-message').textContent = 'Generating smash cut...';
+            document.getElementById('progress-fill').style.width = '0%';
+            document.getElementById('progress-fill').style.background = 'var(--gradient-primary)';
+            document.getElementById('progress-status').textContent = 'Starting...';
+            document.getElementById('download-link').style.display = 'none';
+            document.getElementById('close-progress-btn').style.display = 'none';
+        }
+
+        function hideProgressOverlay() {
+            document.getElementById('progress-overlay').style.display = 'none';
+        }
+
+        function pollJobStatus(jobId) {
+            fetch(`/galleryout/smashcut/status/${jobId}`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('progress-status').textContent = data.message || data.status;
+
+                    if (data.status === 'processing') {
+                        // Indeterminate progress animation
+                        document.getElementById('progress-fill').style.width = '50%';
+                    }
+
+                    if (data.status === 'ready') {
+                        document.getElementById('progress-message').textContent = 'Smash cut ready!';
+                        document.getElementById('progress-fill').style.width = '100%';
+                        document.getElementById('progress-status').textContent =
+                            `File size: ${formatBytes(data.size)}`;
+
+                        const downloadLink = document.getElementById('download-link');
+                        downloadLink.href = data.download_url;
+                        downloadLink.style.display = 'inline-block';
+                        downloadLink.textContent = `Download (${formatBytes(data.size)})`;
+
+                        document.getElementById('close-progress-btn').style.display = 'inline-block';
+                    } else if (data.status === 'error') {
+                        document.getElementById('progress-message').textContent = 'Generation failed';
+                        document.getElementById('progress-fill').style.width = '100%';
+                        document.getElementById('progress-fill').style.background = 'var(--danger-color)';
+                        document.getElementById('close-progress-btn').style.display = 'inline-block';
+                    } else {
+                        // Keep polling
+                        setTimeout(() => pollJobStatus(jobId), 1000);
+                    }
+                })
+                .catch(err => {
+                    console.error('Status check failed:', err);
+                    document.getElementById('progress-message').textContent = 'Connection lost';
+                    document.getElementById('close-progress-btn').style.display = 'inline-block';
+                });
+        }
+    </script>
+</body>
+</html>
