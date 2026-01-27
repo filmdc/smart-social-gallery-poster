@@ -66,10 +66,10 @@ import secrets
 # ============================================================================
 
 # Path to the main media/assets folder.
-BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', '/home/dchevalier/Documents/Projects/ComfyUI/output')
+BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', '/app/data/output')
 
 # Path to source/input media folder (for reference lookups).
-BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', '/home/dchevalier/Documents/Projects/ComfyUI/input')
+BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', '/app/data/input')
 
 # Path for service folders (database, cache, zip files).
 # If not specified, the assets output path will be used.
@@ -2859,9 +2859,13 @@ if __name__ == '__main__':
     check_for_updates()
     print_configuration()
 
-    # --- CHECK: CRITICAL OUTPUT PATH CHECK (Blocking) ---
+    # --- CHECK: OUTPUT PATH CHECK (Auto-create for containers/deployments) ---
     if not os.path.exists(BASE_OUTPUT_PATH):
-        show_config_error_and_exit(BASE_OUTPUT_PATH)
+        try:
+            os.makedirs(BASE_OUTPUT_PATH, exist_ok=True)
+            print(f"{Colors.GREEN}Created output directory: {BASE_OUTPUT_PATH}{Colors.RESET}")
+        except OSError:
+            show_config_error_and_exit(BASE_OUTPUT_PATH)
 
     # --- CHECK: INPUT PATH CHECK (Non-Blocking / Warning) ---
     if not os.path.exists(BASE_INPUT_PATH):

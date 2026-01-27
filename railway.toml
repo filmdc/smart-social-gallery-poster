@@ -1,8 +1,7 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
 
 [deploy]
-startCommand = "python smartgallery.py"
 healthcheckPath = "/galleryout/"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

@@ -53,7 +53,8 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY smartgallery.py /app/smartgallery.py
-COPY templates/* /app/templates/
+COPY social /app/social
+COPY templates /app/templates
 COPY static /app/static
 
 EXPOSE 8189
