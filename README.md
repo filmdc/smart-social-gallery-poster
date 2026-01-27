@@ -232,7 +232,66 @@ Our comprehensive Docker guide covers:
 
 
 ---
-## 🌐 Reverse Proxy Setup
+
+## Environment Variables Reference
+
+All settings are configured via environment variables with fallback defaults in the code.
+
+### Paths & Core Settings
+
+| Variable | Description | Default |
+|---|---|---|
+| `BASE_OUTPUT_PATH` | Main media/assets folder (required) | `/app/data/output` |
+| `BASE_INPUT_PATH` | Source media input folder | `/app/data/input` |
+| `BASE_SMARTGALLERY_PATH` | Location for cache/database files | Same as `BASE_OUTPUT_PATH` |
+| `SERVER_PORT` | Web server port | `8189` (Railway sets `PORT` automatically) |
+| `FFPROBE_MANUAL_PATH` | Path to ffprobe executable | `/usr/bin/ffprobe` |
+| `FFMPEG_MANUAL_PATH` | Path to ffmpeg executable | `/usr/bin/ffmpeg` |
+| `MAX_PARALLEL_WORKERS` | CPU cores for parallel processing | Empty = all cores |
+| `DELETE_TO` | Trash folder path (empty = permanent delete) | Empty |
+| `SECRET_KEY` | Flask secret key for session signing | Auto-generated |
+| `THUMBNAIL_WIDTH` | Width in pixels for generated thumbnails | `300` |
+| `PAGE_SIZE` | Number of files per gallery page | `100` |
+| `BATCH_SIZE` | Files per batch during scanning | `500` |
+
+### Social Media Integration
+
+Set `SOCIAL_FEATURES_ENABLED=true` (default) to enable the social posting module.
+
+| Variable | Description | Required |
+|---|---|---|
+| `FB_APP_ID` | Meta (Facebook/Instagram) OAuth App ID | For Facebook/Instagram |
+| `FB_APP_SECRET` | Meta (Facebook/Instagram) OAuth App Secret | For Facebook/Instagram |
+| `LINKEDIN_CLIENT_ID` | LinkedIn OAuth Client ID | For LinkedIn |
+| `LINKEDIN_CLIENT_SECRET` | LinkedIn OAuth Client Secret | For LinkedIn |
+
+Facebook and Instagram use the same Meta app. The OAuth flow automatically discovers Instagram Business accounts linked to your Facebook Pages.
+
+### SharePoint Integration
+
+Connect a SharePoint Online document library as a gallery asset source.
+
+| Variable | Description | Default |
+|---|---|---|
+| `SHAREPOINT_TENANT_ID` | Azure AD tenant ID | Required |
+| `SHAREPOINT_CLIENT_ID` | Azure AD app registration client ID | Required |
+| `SHAREPOINT_CLIENT_SECRET` | Azure AD app registration client secret | Required |
+| `SHAREPOINT_SITE_URL` | SharePoint site URL (e.g., `https://contoso.sharepoint.com/sites/marketing`) | Required |
+| `SHAREPOINT_LIBRARY_NAME` | Document library name to sync | `Documents` |
+| `SHAREPOINT_SYNC_INTERVAL` | Seconds between background syncs | `300` (5 min) |
+| `SHAREPOINT_LOCAL_CACHE_DIR` | Local directory for cached SharePoint files | `{BASE_SMARTGALLERY_PATH}/.sharepoint_cache` |
+
+**How SharePoint sync works:** A background thread periodically downloads media files (images, videos, audio) from the configured SharePoint document library to a local cache directory. The folder structure from SharePoint is preserved. Files are only re-downloaded when their size changes. Once cached locally, they appear in the gallery sidebar as a browsable folder and are searchable/viewable like any other gallery content.
+
+**Setup overview:**
+1. Register an app in Azure AD (portal.azure.com > App registrations)
+2. Grant it `Sites.Read.All` application permission on Microsoft Graph
+3. Get admin consent for the permission
+4. Set the 4 required environment variables above
+5. Use the "Test Connection" button in Settings to verify
+
+---
+## Reverse Proxy Setup
 
 Running behind Nginx or Apache? Point your proxy to:
 ```

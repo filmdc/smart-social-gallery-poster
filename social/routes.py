@@ -4,6 +4,7 @@ Flask routes for the social media posting feature.
 All routes are registered on the social Blueprint with prefix /galleryout/social/.
 """
 
+import os
 import time
 import uuid
 import json
@@ -541,11 +542,35 @@ def register_routes(bp, db_path):
                 "SELECT * FROM users ORDER BY created_at"
             ).fetchall()
 
+            # SharePoint status
+            from social.sharepoint import (
+                sharepoint_available, SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID,
+                SHAREPOINT_SITE_URL, SHAREPOINT_LIBRARY_NAME, SHAREPOINT_SYNC_INTERVAL
+            )
+            sp_available = sharepoint_available()
+            sp_cache_dir = os.environ.get(
+                'SHAREPOINT_LOCAL_CACHE_DIR', '')
+            if not sp_cache_dir:
+                from smartgallery import BASE_SMARTGALLERY_PATH
+                sp_cache_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
+            sp_cache_count = 0
+            if os.path.isdir(sp_cache_dir):
+                for _root, _dirs, _files in os.walk(sp_cache_dir):
+                    sp_cache_count += len(_files)
+
             return render_template('social/settings.html',
                                    accounts=[dict(a) for a in accounts],
                                    users=[dict(u) for u in users],
                                    fb_available=facebook_available(),
-                                   li_available=linkedin_available())
+                                   li_available=linkedin_available(),
+                                   sp_available=sp_available,
+                                   sp_has_tenant=bool(SHAREPOINT_TENANT_ID),
+                                   sp_has_client=bool(SHAREPOINT_CLIENT_ID),
+                                   sp_site_url=SHAREPOINT_SITE_URL or '',
+                                   sp_library=SHAREPOINT_LIBRARY_NAME or 'Documents',
+                                   sp_sync_interval=SHAREPOINT_SYNC_INTERVAL,
+                                   sp_cache_dir=sp_cache_dir,
+                                   sp_cache_count=sp_cache_count)
         finally:
             conn.close()
 
@@ -702,6 +727,40 @@ def register_routes(bp, db_path):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @bp.route('/sharepoint/test')
+    @admin_required
+    def sharepoint_test():
+        """Test SharePoint connection by resolving site and listing drives."""
+        from social.sharepoint import (
+            sharepoint_available, _get_access_token, _get_site_id, _get_drive_id,
+            SHAREPOINT_SITE_URL, SHAREPOINT_LIBRARY_NAME
+        )
+        if not sharepoint_available():
+            return jsonify({'success': False, 'error': 'SharePoint credentials not configured.'}), 400
+        try:
+            token = _get_access_token()
+            if not token:
+                return jsonify({'success': False, 'step': 'auth', 'error': 'Authentication failed. Check Tenant ID, Client ID, and Client Secret.'})
+            site_id = _get_site_id()
+            if not site_id:
+                return jsonify({'success': False, 'step': 'site', 'error': f'Could not resolve site: {SHAREPOINT_SITE_URL}'})
+            drive_id = _get_drive_id(site_id)
+            if not drive_id:
+                return jsonify({'success': False, 'step': 'library', 'error': f'Could not find document library: {SHAREPOINT_LIBRARY_NAME}'})
+            # List drives to return available libraries
+            import requests as _requests
+            resp = _requests.get(
+                f'https://graph.microsoft.com/v1.0/sites/{site_id}/drives',
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=15,
+            )
+            libraries = []
+            if resp.ok:
+                libraries = [{'name': d.get('name', ''), 'id': d['id']} for d in resp.json().get('value', [])]
+            return jsonify({'success': True, 'site_id': site_id, 'drive_id': drive_id, 'libraries': libraries})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @bp.route('/sharepoint/sync', methods=['POST'])
     @admin_required
     def sharepoint_sync():
@@ -710,11 +769,10 @@ def register_routes(bp, db_path):
         if not sharepoint_available():
             return jsonify({'error': 'SharePoint not configured'}), 400
         try:
-            import os as _os
-            cache_dir = _os.environ.get('SHAREPOINT_LOCAL_CACHE_DIR', '')
+            cache_dir = os.environ.get('SHAREPOINT_LOCAL_CACHE_DIR', '')
             if not cache_dir:
                 from smartgallery import BASE_SMARTGALLERY_PATH
-                cache_dir = _os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
+                cache_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
             synced = sync_sharepoint_to_local(cache_dir)
             return jsonify({'synced_count': len(synced), 'files': synced[:50]})
         except Exception as e:
