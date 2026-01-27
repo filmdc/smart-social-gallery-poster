@@ -100,6 +100,8 @@ load_env() {
         if [[ "A$key" ==  "A$i" ]]; then doit=ignore; break; fi
       done
       if [[ "A$doit" == "Aignore" ]]; then continue; fi
+      # Skip keys that are not valid bash variable names (e.g. Railway-injected vars with hyphens/dots)
+      if [[ ! "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then continue; fi
       rvalue=$value
       # checking if part of the key is in the obfuscate list
       doobs=false
