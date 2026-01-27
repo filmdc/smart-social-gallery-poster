@@ -84,7 +84,7 @@ FFPROBE_MANUAL_PATH = os.environ.get('FFPROBE_MANUAL_PATH', "/usr/bin/ffprobe")
 FFMPEG_MANUAL_PATH = os.environ.get('FFMPEG_MANUAL_PATH', "/usr/bin/ffmpeg")
 
 # Port on which the gallery web server will run.
-SERVER_PORT = int(os.environ.get('SERVER_PORT', 8189))
+SERVER_PORT = int(os.environ.get('PORT', os.environ.get('SERVER_PORT', 8189)))
 
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = int(os.environ.get('THUMBNAIL_WIDTH', 300))
