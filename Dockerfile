@@ -49,6 +49,10 @@ RUN useradd -u 1025 -d /home/smartgallerytoo -g smartgallerytoo -s /bin/bash -m 
     && usermod -G users smartgallerytoo \
     && adduser smartgallerytoo sudo
 
+# Create data directories writable by smartgallery user
+RUN mkdir -p /app/data/output /app/data/input \
+    && chown -R smartgallery:smartgallery /app/data
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
