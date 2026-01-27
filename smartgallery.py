@@ -1,11 +1,9 @@
-# Smart Gallery for ComfyUI
-# Author: Biagio Maffettone © 2025 — MIT License (free to use and modify)
+# Smart Asset Gallery
+# Asset management, viewer, and social media posting platform
+# for Community Action Lehigh Valley's marketing team.
 #
-# Version: 1.41 - November 24, 2025
-# Check the GitHub repository for updates, bug fixes, and contributions.
-#
-# Contact: biagiomaf@gmail.com
-# GitHub: https://github.com/biagiomaf/smart-comfyui-gallery
+# Based on Smart Gallery for ComfyUI by Biagio Maffettone (MIT License)
+# GitHub: https://github.com/filmdc/smart-social-gallery-poster
 
 import os
 import hashlib
@@ -42,86 +40,20 @@ import secrets
 
 
 # ============================================================================
-# CONFIGURATION GUIDE - PLEASE READ BEFORE SETTING UP
+# CONFIGURATION GUIDE
 # ============================================================================
 #
-# CONFIGURATION PRIORITY:
-# All settings below first check for environment variables. If an environment 
-# variable is set, its value will be used automatically. 
-# If you have NOT set environment variables, you only need to modify the 
-# values AFTER the comma in the os.environ.get() statements.
+# All settings check for environment variables first. If an environment
+# variable is set, its value is used. Otherwise, the fallback default is used.
 #
-# Example: os.environ.get('BASE_OUTPUT_PATH', 'C:/your/path/here')
-#          - If BASE_OUTPUT_PATH environment variable exists → it will be used
-#          - If NOT → the value 'C:/your/path/here' will be used instead
-#          - ONLY CHANGE 'C:/your/path/here' if you haven't set environment variables
+# Example: os.environ.get('BASE_OUTPUT_PATH', '/path/to/assets')
 #
-# ----------------------------------------------------------------------------
-# HOW TO SET ENVIRONMENT VARIABLES (before running python smartgallery.py):
-# ----------------------------------------------------------------------------
-#
-# IMPORTANT: If your paths contain SPACES, you MUST use quotes around them!
-#            Replace the example paths below with YOUR actual paths!
-#
-# Windows (Command Prompt):
-#   call venv\Scripts\activate.bat
-#   set "BASE_OUTPUT_PATH=C:/ComfyUI/output"
-#   set BASE_INPUT_PATH=C:/sm/Data/Packages/ComfyUI/input
-#   set "BASE_SMARTGALLERY_PATH=C:/ComfyUI/output"
-#   set "FFPROBE_MANUAL_PATH=C:/ffmpeg/bin/ffprobe.exe"
-#   set SERVER_PORT=8189
-#   set THUMBNAIL_WIDTH=300
-#   set WEBP_ANIMATED_FPS=16.0
-#   set PAGE_SIZE=100
-#   set BATCH_SIZE=500
-#   REM Leave MAX_PARALLEL_WORKERS empty to use all CPU cores (recommended)
-#   set "MAX_PARALLEL_WORKERS="
-#   REM Or set a specific number to limit CPU usage: set MAX_PARALLEL_WORKERS=4
+# Set environment variables before running:
+#   export BASE_OUTPUT_PATH="/path/to/your/assets"
+#   export BASE_INPUT_PATH="/path/to/source/media"
 #   python smartgallery.py
 #
-# Windows (PowerShell):
-#   venv\Scripts\Activate.ps1
-#   $env:BASE_OUTPUT_PATH="C:/ComfyUI/output"
-#   $env:BASE_INPUT_PATH="C:/sm/Data/Packages/ComfyUI/input"
-#   $env:BASE_SMARTGALLERY_PATH="C:/ComfyUI/output"
-#   $env:FFPROBE_MANUAL_PATH="C:/ffmpeg/bin/ffprobe.exe"
-#   $env:SERVER_PORT="8189"
-#   $env:THUMBNAIL_WIDTH="300"
-#   $env:WEBP_ANIMATED_FPS="16.0"
-#   $env:PAGE_SIZE="100"
-#   $env:BATCH_SIZE="500"
-#   # Leave MAX_PARALLEL_WORKERS empty to use all CPU cores (recommended)
-#   $env:MAX_PARALLEL_WORKERS=""
-#   # Or set a specific number to limit CPU usage: $env:MAX_PARALLEL_WORKERS="4"
-#   python smartgallery.py
-#
-# Linux/Mac (bash/zsh):
-#   source venv/bin/activate
-#   export BASE_OUTPUT_PATH="$HOME/ComfyUI/output"
-#   export BASE_INPUT_PATH="/path/to/ComfyUI/input"
-#   export BASE_SMARTGALLERY_PATH="$HOME/ComfyUI/output"
-#   export FFPROBE_MANUAL_PATH="/usr/bin/ffprobe"
-#   export DELETE_TO="/path/to/trash" # Optional, set to disable permanent delete
-#   export SERVER_PORT=8189
-#   export THUMBNAIL_WIDTH=300
-#   export WEBP_ANIMATED_FPS=16.0
-#   export PAGE_SIZE=100
-#   export BATCH_SIZE=500
-#   # Leave MAX_PARALLEL_WORKERS empty to use all CPU cores (recommended)
-#   export MAX_PARALLEL_WORKERS=""
-#   # Or set a specific number to limit CPU usage: export MAX_PARALLEL_WORKERS=4
-#   python smartgallery.py
-#
-#
-# IMPORTANT NOTES:
-# - Even on Windows, always use forward slashes (/) in paths, 
-#   not backslashes (\), to ensure compatibility.
-# - Use QUOTES around paths containing spaces to avoid errors.
-# - Replace example paths (C:/ComfyUI/, $HOME/ComfyUI/) with YOUR actual paths!
-# - Set MAX_PARALLEL_WORKERS="" (empty string) to use all available CPU cores.
-#   Set it to a number (e.g., 4) to limit CPU usage.
-# - It is strongly recommended to have ffmpeg installed, 
-#   since some features depend on it.
+# Or use start_gallery.sh which exports them for you.
 #
 # ============================================================================
 
@@ -133,48 +65,31 @@ import secrets
 # Remember: environment variables take priority over these default values.
 # ============================================================================
 
-# Path to the ComfyUI 'output' folder.
-# Common locations:
-#   Windows: C:/ComfyUI/output or C:/Users/YourName/ComfyUI/output
-#   Linux/Mac: /home/username/ComfyUI/output or ~/ComfyUI/output
+# Path to the main media/assets folder.
 BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', '/home/dchevalier/Documents/Projects/ComfyUI/output')
 
-# Path to the ComfyUI 'input' folder
+# Path to source/input media folder (for reference lookups).
 BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', '/home/dchevalier/Documents/Projects/ComfyUI/input')
 
-# Path for service folders (database, cache, zip files). 
-# If not specified, the ComfyUI output path will be used. 
+# Path for service folders (database, cache, zip files).
+# If not specified, the assets output path will be used.
 # These sub-folders won't appear in the gallery.
-# Change this if you want the cache stored separately for better performance
-# or to keep system files separate from gallery content.
-# Leave as-is if you are unsure. 
 BASE_SMARTGALLERY_PATH = os.environ.get('BASE_SMARTGALLERY_PATH', BASE_OUTPUT_PATH)
 
 # Path to ffprobe executable (part of ffmpeg).
-# Common locations:
-#   Windows: C:/ffmpeg/bin/ffprobe.exe or C:/Program Files/ffmpeg/bin/ffprobe.exe
-#   Linux: /usr/bin/ffprobe or /usr/local/bin/ffprobe
-#   Mac: /usr/local/bin/ffprobe or /opt/homebrew/bin/ffprobe
-# Required for extracting workflows from .mp4 files.
-# NOTE: A full ffmpeg installation is highly recommended.
+# Required for video metadata extraction.
 FFPROBE_MANUAL_PATH = os.environ.get('FFPROBE_MANUAL_PATH', "/usr/bin/ffprobe")
 
-# Path to ffmpeg executable (for video concatenation in smash cut generator).
-# Common locations are the same as ffprobe (they come together in ffmpeg package).
+# Path to ffmpeg executable (for video processing).
 FFMPEG_MANUAL_PATH = os.environ.get('FFMPEG_MANUAL_PATH', "/usr/bin/ffmpeg")
 
-# Port on which the gallery web server will run. 
-# Must be different from the ComfyUI port (usually 8188).
-# The gallery does not require ComfyUI to be running; it works independently.
+# Port on which the gallery web server will run.
 SERVER_PORT = int(os.environ.get('SERVER_PORT', 8189))
 
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = int(os.environ.get('THUMBNAIL_WIDTH', 300))
 
-# Assumed frame rate for animated WebP files.  
-# Many tools, including ComfyUI, generate WebP animations at ~16 FPS.  
-# Adjust this value if your WebPs use a different frame rate,  
-# so that animation durations are calculated correctly.
+# Assumed frame rate for animated WebP files.
 WEBP_ANIMATED_FPS = float(os.environ.get('WEBP_ANIMATED_FPS', 16.0))
 
 # Maximum number of files to load initially before showing a "Load more" button.  
@@ -207,19 +122,17 @@ else:
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Optional path where deleted files will be moved instead of being permanently deleted.
-# If set, files will be moved to DELETE_TO/SmartGallery/<timestamp>_<filename>
+# If set, files will be moved to DELETE_TO/SmartAssetGallery/<timestamp>_<filename>
 # If not set (None or empty string), files will be permanently deleted as before.
 # The path MUST exist and be writable, or the application will exit with an error.
 # Example: /path/to/trash or C:/Trash
 DELETE_TO = os.environ.get('DELETE_TO', None)
 
-# ComfyUI server URL for sending workflows directly to ComfyUI.
-# Default is http://127.0.0.1:8188 (standard ComfyUI port).
-# Set this to the URL of your ComfyUI instance if running on a different host/port.
+# External workflow tool URL (e.g., ComfyUI). Used for "send to" feature.
 COMFYUI_URL = os.environ.get('COMFYUI_URL', 'http://127.0.0.1:8188')
 if DELETE_TO and DELETE_TO.strip():
     DELETE_TO = DELETE_TO.strip()
-    TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartGallery')
+    TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartAssetGallery')
     
     # Validate that DELETE_TO path exists
     if not os.path.exists(DELETE_TO):
@@ -233,7 +146,7 @@ if DELETE_TO and DELETE_TO.strip():
         print(f"{Colors.RED}Please check permissions or unset the DELETE_TO environment variable.{Colors.RESET}")
         sys.exit(1)
     
-    # Validate that SmartGallery subfolder exists or can be created
+    # Validate that trash subfolder exists or can be created
     if not os.path.exists(TRASH_FOLDER):
         try:
             os.makedirs(TRASH_FOLDER)
@@ -260,10 +173,10 @@ ZIP_CACHE_FOLDER_NAME = '.zip_downloads'
 SMASHCUT_FOLDER_NAME = '.smashcut_output'  
 
 # --- APP INFO ---
-APP_VERSION = 1.41
-APP_VERSION_DATE = "November 24, 2025"
-GITHUB_REPO_URL = "https://github.com/biagiomaf/smart-comfyui-gallery"
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/biagiomaf/smart-comfyui-gallery/main/smartgallery.py"
+APP_VERSION = 2.0
+APP_VERSION_DATE = "January 2026"
+GITHUB_REPO_URL = "https://github.com/filmdc/smart-social-gallery-poster"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/filmdc/smart-social-gallery-poster/main/smartgallery.py"
 
 
 # --- HELPER FUNCTIONS (DEFINED FIRST) ---
@@ -311,16 +224,19 @@ def print_configuration():
     print_row("Server Port", SERVER_PORT)
     print_row("Base Output Path", BASE_OUTPUT_PATH, True)
     print_row("Base Input Path", BASE_INPUT_PATH, True)
-    print_row("SmartGallery Path", BASE_SMARTGALLERY_PATH, True)
+    print_row("Cache/Data Path", BASE_SMARTGALLERY_PATH, True)
     print_row("FFprobe Path", FFPROBE_MANUAL_PATH, True)
     print_row("Delete To (Trash)", DELETE_TO if DELETE_TO else "Disabled (Permanent Delete)", DELETE_TO is not None)
-    print_row("ComfyUI URL", COMFYUI_URL, True)
+    print_row("Workflow Tool URL", COMFYUI_URL, True)
     print_row("Thumbnail Width", f"{THUMBNAIL_WIDTH}px")
     print_row("WebP Animated FPS", WEBP_ANIMATED_FPS)
     print_row("Page Size", PAGE_SIZE)
     print_row("Batch Size", BATCH_SIZE)
     print_row("Max Parallel Workers", MAX_PARALLEL_WORKERS if MAX_PARALLEL_WORKERS else "All Cores")
     print(f"{Colors.HEADER}-----------------------------{Colors.RESET}\n")
+
+# --- SOCIAL FEATURES ---
+SOCIAL_FEATURES_ENABLED = os.environ.get('SOCIAL_FEATURES_ENABLED', 'true').lower() == 'true'
 
 # --- FLASK APP INITIALIZATION ---
 app = Flask(__name__)
@@ -391,7 +307,7 @@ def filter_enabled_nodes(workflow_data):
 def generate_node_summary(workflow_json_string):
     """
     Analyzes a workflow JSON, extracts active nodes, and identifies input media.
-    Robust version: handles ComfyUI specific suffixes like ' [output]'.
+    Robust version: handles workflow tool suffixes like ' [output]'.
     """
     try:
         workflow_data = json.loads(workflow_json_string)
@@ -1312,6 +1228,42 @@ def initialize_gallery():
         else:
             print(f"INFO: DB version ({stored_version}) is up to date. Starting normally.")
 
+    # Initialize social features
+    if SOCIAL_FEATURES_ENABLED:
+        try:
+            from social import init_social
+            social_ok = init_social(app, DATABASE_FILE)
+            if social_ok:
+                print(f"{Colors.GREEN}INFO: Social features enabled.{Colors.RESET}")
+                # Initialize scheduler
+                from social.scheduler import init_scheduler
+                init_scheduler(DATABASE_FILE, SECRET_KEY)
+            else:
+                print(f"{Colors.YELLOW}INFO: Social features disabled (init returned False).{Colors.RESET}")
+        except ImportError as e:
+            print(f"{Colors.YELLOW}INFO: Social features unavailable (missing dependencies: {e}).{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.YELLOW}WARNING: Social features failed to initialize: {e}{Colors.RESET}")
+    else:
+        print(f"INFO: Social features disabled via SOCIAL_FEATURES_ENABLED.")
+
+    # Initialize SharePoint integration
+    try:
+        from social.sharepoint import sharepoint_available, start_background_sync
+        if sharepoint_available():
+            sp_cache_dir = os.environ.get(
+                'SHAREPOINT_LOCAL_CACHE_DIR',
+                os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
+            )
+            start_background_sync(sp_cache_dir)
+            print(f"{Colors.GREEN}INFO: SharePoint integration enabled (cache: {sp_cache_dir}).{Colors.RESET}")
+        else:
+            print(f"INFO: SharePoint not configured (set SHAREPOINT_* env vars to enable).")
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"{Colors.YELLOW}WARNING: SharePoint init failed: {e}{Colors.RESET}")
+
 
 # --- FLASK ROUTES ---
 @app.route('/galleryout/')
@@ -1424,7 +1376,8 @@ def gallery_view(folder_key):
                            selected_models=request.args.getlist('model'),
                            selected_loras=request.args.getlist('lora'),
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
-                           protected_folder_keys=list(PROTECTED_FOLDER_KEYS))
+                           protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
+                           social_enabled=SOCIAL_FEATURES_ENABLED)
 
 @app.route('/galleryout/upload', methods=['POST'])
 def upload_files():
@@ -1543,7 +1496,7 @@ def background_zip_task(job_id, file_ids):
                 zip_jobs[job_id] = {'status': 'error', 'message': f'Server permission error: {e}'}
                 return
         
-        zip_filename = f"smartgallery_{job_id}.zip"
+        zip_filename = f"gallery_{job_id}.zip"
         zip_filepath = os.path.join(ZIP_CACHE_DIR, zip_filename)
         
         with get_db_connection() as conn:
@@ -2106,7 +2059,7 @@ def _convert_ui_workflow_to_api(ui_workflow):
 @app.route('/galleryout/send_to_comfyui/<string:file_id>', methods=['POST'])
 def send_to_comfyui(file_id):
     """
-    Sends a workflow to the local ComfyUI instance.
+    Sends a workflow to the configured external workflow tool.
 
     Request body (optional):
     {
@@ -2115,8 +2068,8 @@ def send_to_comfyui(file_id):
     }
 
     Actions:
-    - "queue": Queues the workflow for immediate execution in ComfyUI
-    - "load": Returns the workflow data for loading in ComfyUI UI (opens in new tab)
+    - "queue": Queues the workflow for immediate execution
+    - "load": Returns the workflow data for loading in the workflow tool UI
     """
     try:
         filepath = get_file_info_from_db(file_id, 'path')
@@ -2136,7 +2089,7 @@ def send_to_comfyui(file_id):
             }), 404
 
         if action == 'load':
-            # Return workflow for loading in ComfyUI UI (prefer UI format for loading)
+            # Return workflow for loading in workflow tool UI (prefer UI format)
             workflow_to_load = ui_workflow or api_workflow
             return jsonify({
                 'status': 'success',
@@ -2144,10 +2097,10 @@ def send_to_comfyui(file_id):
                 'workflow': workflow_to_load,
                 'format': 'ui' if ui_workflow else 'api',
                 'comfyui_url': COMFYUI_URL,
-                'message': 'Workflow ready to load in ComfyUI.'
+                'message': 'Workflow ready to load.'
             })
 
-        # Action: queue - Send workflow to ComfyUI for execution (need API format)
+        # Action: queue - Send workflow for execution (need API format)
         if not api_workflow and ui_workflow:
             # Try to convert UI format to API format
             api_workflow = _convert_ui_workflow_to_api(ui_workflow)
@@ -2156,12 +2109,12 @@ def send_to_comfyui(file_id):
                 return jsonify({
                     'status': 'error',
                     'message': 'This workflow is in UI format and could not be converted to API format. '
-                               'Please use the "load" action to open it in ComfyUI UI instead.',
+                               'Please use the "load" action to open it in the workflow tool instead.',
                     'format': 'ui',
                     'suggestion': 'load'
                 }), 400
 
-        # Prepare the prompt payload for ComfyUI
+        # Prepare the prompt payload
         prompt_payload = {
             'prompt': api_workflow
         }
@@ -2169,7 +2122,7 @@ def send_to_comfyui(file_id):
         if client_id:
             prompt_payload['client_id'] = client_id
 
-        # Send to ComfyUI
+        # Send to workflow tool
         comfyui_prompt_url = f"{COMFYUI_URL.rstrip('/')}/prompt"
 
         req = urllib.request.Request(
@@ -2186,7 +2139,7 @@ def send_to_comfyui(file_id):
                 return jsonify({
                     'status': 'success',
                     'action': 'queue',
-                    'message': 'Workflow sent to ComfyUI successfully!',
+                    'message': 'Workflow sent successfully!',
                     'prompt_id': response_data.get('prompt_id'),
                     'number': response_data.get('number'),
                     'comfyui_url': COMFYUI_URL
@@ -2197,14 +2150,14 @@ def send_to_comfyui(file_id):
             error_body = e.read().decode('utf-8', errors='ignore')
             return jsonify({
                 'status': 'error',
-                'message': f'ComfyUI returned an error: {e.code} - {error_body}'
+                'message': f'Workflow tool returned an error: {e.code} - {error_body}'
             }), e.code
 
         except urllib.error.URLError as e:
             return jsonify({
                 'status': 'error',
-                'message': f'Could not connect to ComfyUI at {COMFYUI_URL}. '
-                           f'Is ComfyUI running? Error: {str(e.reason)}'
+                'message': f'Could not connect to workflow tool at {COMFYUI_URL}. '
+                           f'Is it running? Error: {str(e.reason)}'
             }), 503
 
     except json.JSONDecodeError:
@@ -2213,7 +2166,7 @@ def send_to_comfyui(file_id):
             'message': 'Invalid workflow JSON in the file.'
         }), 400
     except Exception as e:
-        print(f"ERROR sending workflow to ComfyUI for {file_id}: {e}")
+        print(f"ERROR sending workflow for {file_id}: {e}")
         return jsonify({
             'status': 'error',
             'message': f'An unexpected error occurred: {str(e)}'
@@ -2222,7 +2175,7 @@ def send_to_comfyui(file_id):
 @app.route('/galleryout/comfyui_status')
 def comfyui_status():
     """
-    Checks if ComfyUI is reachable and returns its status.
+    Checks if the workflow tool is reachable and returns its status.
     Useful for the frontend to show connection status.
     """
     try:
@@ -2243,7 +2196,7 @@ def comfyui_status():
         return jsonify({
             'status': 'offline',
             'comfyui_url': COMFYUI_URL,
-            'message': 'ComfyUI is not reachable.'
+            'message': 'Workflow tool is not reachable.'
         })
     except Exception as e:
         return jsonify({
@@ -2336,7 +2289,7 @@ def favicon():
 
 @app.route('/galleryout/input_file/<path:filename>')
 def serve_input_file(filename):
-    """Serves input files directly from the ComfyUI Input folder."""
+    """Serves input files directly from the source media input folder."""
     try:
         # Prevent path traversal
         filename = secure_filename(filename)
@@ -2512,14 +2465,30 @@ def smashcut_get_input_files():
     """
     Returns list of unique input file references found across all video workflows.
     Used to populate the input file filter dropdown.
-    Now queries from cached database instead of extracting from each file.
+    Accepts optional folder_keys query parameter to filter by specific folders.
     """
     all_input_files = set()
+    folder_keys = request.args.getlist('folder_keys')
+
+    folders = get_dynamic_folder_config()
 
     with get_db_connection() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT input_files FROM files WHERE type = 'video' AND input_files != '[]'"
-        ).fetchall()
+        conditions = ["type = 'video'", "input_files != '[]'"]
+        params = []
+
+        # Filter by folders if specified
+        if folder_keys:
+            folder_conditions = []
+            for key in folder_keys:
+                if key in folders:
+                    folder_path = folders[key]['path']
+                    folder_conditions.append("path LIKE ?")
+                    params.append(folder_path + os.sep + '%')
+            if folder_conditions:
+                conditions.append(f"({' OR '.join(folder_conditions)})")
+
+        query = f"SELECT DISTINCT input_files FROM files WHERE {' AND '.join(conditions)}"
+        rows = conn.execute(query, params).fetchall()
 
     for row in rows:
         try:
@@ -2532,6 +2501,113 @@ def smashcut_get_input_files():
         'status': 'success',
         'input_files': sorted(list(all_input_files))
     })
+
+
+@app.route('/galleryout/input_file_thumbnail/<path:filename>')
+def serve_input_file_thumbnail(filename):
+    """Serves thumbnails for input files from the source media folder."""
+    try:
+        # Normalize the path and prevent traversal
+        # Decode URL-encoded characters and normalize path separators
+        clean_filename = filename.replace('\\', '/')
+
+        # Remove any leading slashes or dots that could be used for traversal
+        while clean_filename.startswith('/') or clean_filename.startswith('./'):
+            clean_filename = clean_filename.lstrip('/').lstrip('./')
+
+        # Check for path traversal attempts
+        if '..' in clean_filename:
+            abort(403)
+
+        # Build the full path
+        filepath = os.path.abspath(os.path.join(BASE_INPUT_PATH, clean_filename))
+        base_path = os.path.abspath(BASE_INPUT_PATH)
+
+        # Ensure the path is within the input directory
+        if not filepath.startswith(base_path + os.sep) and filepath != base_path:
+            abort(403)
+
+        if not os.path.isfile(filepath):
+            abort(404)
+
+        # Generate a cache key based on the file path and modification time
+        mtime = os.path.getmtime(filepath)
+        file_hash = hashlib.md5((filepath + str(mtime)).encode()).hexdigest()
+
+        # Check for existing thumbnail
+        existing_thumbnails = glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"input_{file_hash}.*"))
+        if existing_thumbnails:
+            response = send_file(existing_thumbnails[0], conditional=True)
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+            return response
+
+        # Determine file type
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext in ['.mp4', '.webm', '.mov', '.mkv', '.avi']:
+            file_type = 'video'
+        else:
+            file_type = 'image'
+
+        # Generate thumbnail
+        cache_path = create_thumbnail(filepath, f"input_{file_hash}", file_type)
+        if cache_path and os.path.exists(cache_path):
+            response = send_file(cache_path, conditional=True)
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+            return response
+
+        # Fallback: serve the original file for images
+        if file_type == 'image':
+            return send_from_directory(os.path.dirname(filepath), os.path.basename(filepath), as_attachment=False)
+
+        return "Thumbnail generation failed", 404
+    except Exception as e:
+        print(f"Error serving input file thumbnail: {e}")
+        abort(404)
+
+
+@app.route('/galleryout/smashcut/input_directory_files')
+def smashcut_get_input_directory_files():
+    """
+    Returns list of all media files in the input directory and its subfolders.
+    Used to allow browsing input files directly (not just those referenced in workflows).
+    """
+    valid_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.jfif',
+                        '.mp4', '.webm', '.mov', '.mkv', '.avi'}
+    all_files = []
+
+    try:
+        base_path = os.path.abspath(BASE_INPUT_PATH)
+        for root, dirs, files in os.walk(BASE_INPUT_PATH):
+            # Skip hidden directories
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+            for filename in files:
+                if filename.startswith('.'):
+                    continue
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in valid_extensions:
+                    full_path = os.path.join(root, filename)
+                    # Get relative path from input directory
+                    rel_path = os.path.relpath(full_path, BASE_INPUT_PATH)
+                    # Normalize path separators
+                    rel_path = rel_path.replace('\\', '/')
+                    all_files.append(rel_path)
+
+        # Sort files, with root directory files first, then by path
+        all_files.sort(key=lambda x: (x.count('/'), x.lower()))
+
+        return jsonify({
+            'status': 'success',
+            'files': all_files,
+            'count': len(all_files)
+        })
+    except Exception as e:
+        print(f"Error listing input directory files: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'files': []
+        })
 
 
 @app.route('/galleryout/smashcut/filter', methods=['POST'])
@@ -2685,21 +2761,23 @@ def smashcut_download(filename):
 
 def print_startup_banner():
     banner = rf"""
-{Colors.GREEN}{Colors.BOLD}   _____                      _      _____       _ _                 
-  / ____|                    | |    / ____|     | | |                
- | (___  _ __ ___   __ _ _ __| |_  | |  __  __ _| | | ___ _ __ _   _ 
-  \___ \| '_ ` _ \ / _` | '__| __| | | |_ |/ _` | | |/ _ \ '__| | | |
-  ____) | | | | | | (_| | |  | |_  | |__| | (_| | | |  __/ |  | |_| |
- |_____/|_| |_| |_|\__,_|_|   \__|  \_____|\__,_|_|_|\___|_|   \__, |
-                                                                __/ |
-                                                               |___/ {Colors.RESET}
+{Colors.GREEN}{Colors.BOLD}  ____                       _        _                _
+ / ___| _ __ ___   __ _ _ __| |_     / \   ___ ___  ___| |_
+ \___ \| '_ ` _ \ / _` | '__| __|   / _ \ / __/ __|/ _ \ __|
+  ___) | | | | | | (_| | |  | |_   / ___ \\__ \__ \  __/ |_
+ |____/|_| |_| |_|\__,_|_|   \__| /_/   \_\___/___/\___|\__|
+   ____       _ _
+  / ___| __ _| | | ___ _ __ _   _
+ | |  _ / _` | | |/ _ \ '__| | | |
+ | |_| | (_| | | |  __/ |  | |_| |
+  \____|\__,_|_|_|\___|_|   \__, |
+                             |___/ {Colors.RESET}
     """
     print(banner)
-    print(f"   {Colors.BOLD}Smart Gallery for ComfyUI{Colors.RESET}")
-    print(f"   Author     : {Colors.BLUE}Biagio Maffettone{Colors.RESET}")
+    print(f"   {Colors.BOLD}Smart Asset Gallery{Colors.RESET}")
+    print(f"   Community Action Lehigh Valley - Marketing Team")
     print(f"   Version    : {Colors.YELLOW}{APP_VERSION}{Colors.RESET} ({APP_VERSION_DATE})")
     print(f"   GitHub     : {Colors.CYAN}{GITHUB_REPO_URL}{Colors.RESET}")
-    print(f"   Contributor: {Colors.CYAN}Martial Michel (Docker & Codebase){Colors.RESET}")
     print("")
     
 def check_for_updates():
@@ -2741,7 +2819,7 @@ def show_config_error_and_exit(path):
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        messagebox.showerror("SmartGallery - Configuration Error", msg)
+        messagebox.showerror("Smart Asset Gallery - Configuration Error", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
@@ -2758,7 +2836,7 @@ def show_ffmpeg_warning():
         "The system uses the 'ffprobe' utility to analyze video files. "
         "It seems it is missing or not configured correctly.\n\n"
         "CONSEQUENCES:\n"
-        "❌ You will NOT be able to extract ComfyUI workflows from video files (.mp4, .mov, etc).\n"
+        "❌ Video metadata extraction will be limited.\n"
         "✅ Gallery browsing, playback, and image features will still work perfectly.\n\n"
         "To fix this, install FFmpeg or check the 'FFPROBE_MANUAL_PATH' in the configuration."
     )
@@ -2767,7 +2845,7 @@ def show_ffmpeg_warning():
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        messagebox.showwarning("SmartGallery - Feature Limitation", msg)
+        messagebox.showwarning("Smart Asset Gallery - Feature Limitation", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
@@ -2789,8 +2867,8 @@ if __name__ == '__main__':
     if not os.path.exists(BASE_INPUT_PATH):
         print(f"{Colors.YELLOW}{Colors.BOLD}WARNING: Input Path not found!{Colors.RESET}")
         print(f"{Colors.YELLOW}   The path '{BASE_INPUT_PATH}' does not exist.{Colors.RESET}")
-        print(f"{Colors.YELLOW}   > Source media visualization in Node Summary will be DISABLED.{Colors.RESET}")
-        print(f"{Colors.YELLOW}   > The gallery will still function normally for output files.{Colors.RESET}\n")
+        print(f"{Colors.YELLOW}   > Source media lookups will be DISABLED.{Colors.RESET}")
+        print(f"{Colors.YELLOW}   > The gallery will still function normally.{Colors.RESET}\n")
     
     # Initialize the gallery
     initialize_gallery()
@@ -2802,11 +2880,11 @@ if __name__ == '__main__':
             try:
                 show_ffmpeg_warning()
             except:
-                print(f"{Colors.RED}WARNING: FFmpeg not found. Video workflows extraction disabled.{Colors.RESET}")
+                print(f"{Colors.RED}WARNING: FFmpeg not found. Video metadata extraction disabled.{Colors.RESET}")
         else:
-            print(f"{Colors.RED}WARNING: FFmpeg not found. Video workflows extraction disabled.{Colors.RESET}")
+            print(f"{Colors.RED}WARNING: FFmpeg not found. Video metadata extraction disabled.{Colors.RESET}")
 
-    print(f"{Colors.GREEN}{Colors.BOLD}🚀 Gallery started successfully!{Colors.RESET}")
+    print(f"{Colors.GREEN}{Colors.BOLD}🚀 Smart Asset Gallery started successfully!{Colors.RESET}")
     print(f"👉 Access URL: {Colors.CYAN}{Colors.BOLD}http://127.0.0.1:{SERVER_PORT}/galleryout/{Colors.RESET}")
     print(f"   (Press CTRL+C to stop)")
     

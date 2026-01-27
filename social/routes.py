@@ -1,0 +1,744 @@
+"""
+Flask routes for the social media posting feature.
+
+All routes are registered on the social Blueprint with prefix /galleryout/social/.
+"""
+
+import time
+import uuid
+import json
+import sqlite3
+
+from flask import (render_template, request, redirect, url_for, jsonify,
+                   flash, session, current_app)
+from flask_login import login_user, logout_user, login_required, current_user
+
+from social.auth import User, admin_required, has_users
+from social.models import get_social_db
+from social.oauth import (
+    facebook_available, linkedin_available,
+    get_facebook_authorize_url, exchange_facebook_code,
+    get_linkedin_authorize_url, exchange_linkedin_code,
+    save_social_account,
+)
+from social.scheduler import publish_post_now
+
+_db_path = None
+
+
+def register_routes(bp, db_path):
+    """Register all social routes on the given Blueprint."""
+    global _db_path
+    _db_path = db_path
+
+    # =========================================================================
+    # AUTH ROUTES
+    # =========================================================================
+
+    @bp.route('/setup', methods=['GET', 'POST'])
+    def setup():
+        """First-time admin account creation."""
+        if has_users(_db_path):
+            return redirect(url_for('social.login'))
+
+        if request.method == 'POST':
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '').strip()
+            confirm = request.form.get('confirm_password', '').strip()
+            display_name = request.form.get('display_name', '').strip() or username
+
+            errors = []
+            if not username or len(username) < 3:
+                errors.append('Username must be at least 3 characters.')
+            if not password or len(password) < 8:
+                errors.append('Password must be at least 8 characters.')
+            if password != confirm:
+                errors.append('Passwords do not match.')
+
+            if errors:
+                return render_template('social/login.html', setup_mode=True,
+                                       errors=errors, username=username,
+                                       display_name=display_name)
+
+            user = User.create(username, password, display_name, 'admin', _db_path)
+            login_user(user)
+            user.update_last_login(_db_path)
+            flash('Admin account created successfully.', 'success')
+            return redirect(url_for('social.dashboard'))
+
+        return render_template('social/login.html', setup_mode=True)
+
+    @bp.route('/login', methods=['GET', 'POST'])
+    def login():
+        """Login page."""
+        if not has_users(_db_path):
+            return redirect(url_for('social.setup'))
+
+        if current_user.is_authenticated:
+            return redirect(url_for('social.dashboard'))
+
+        if request.method == 'POST':
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+
+            user = User.get_by_username(username, _db_path)
+            if user and user.is_active and user.check_password(password):
+                login_user(user)
+                user.update_last_login(_db_path)
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('social.dashboard'))
+
+            return render_template('social/login.html', setup_mode=False,
+                                   errors=['Invalid username or password.'],
+                                   username=username)
+
+        return render_template('social/login.html', setup_mode=False)
+
+    @bp.route('/logout')
+    @login_required
+    def logout():
+        logout_user()
+        return redirect(url_for('gallery_redirect_base'))
+
+    # =========================================================================
+    # DASHBOARD
+    # =========================================================================
+
+    @bp.route('/dashboard')
+    @login_required
+    def dashboard():
+        """Post queue management dashboard."""
+        status_filter = request.args.get('status', 'all')
+        conn = get_social_db(_db_path)
+        try:
+            if status_filter == 'all':
+                posts = conn.execute(
+                    "SELECT p.*, u.display_name as creator_name FROM posts p "
+                    "LEFT JOIN users u ON p.created_by = u.id "
+                    "ORDER BY p.updated_at DESC"
+                ).fetchall()
+            else:
+                posts = conn.execute(
+                    "SELECT p.*, u.display_name as creator_name FROM posts p "
+                    "LEFT JOIN users u ON p.created_by = u.id "
+                    "WHERE p.status = ? ORDER BY p.updated_at DESC",
+                    (status_filter,)
+                ).fetchall()
+
+            # Enrich posts with media and platform info
+            enriched = []
+            for post in posts:
+                post_dict = dict(post)
+                post_dict['media'] = conn.execute(
+                    "SELECT pm.*, f.name, f.type, f.path FROM post_media pm "
+                    "LEFT JOIN files f ON pm.file_id = f.id "
+                    "WHERE pm.post_id = ? ORDER BY pm.sort_order",
+                    (post_dict['id'],)
+                ).fetchall()
+                post_dict['platforms'] = conn.execute(
+                    "SELECT pp.*, sa.platform, sa.account_name FROM post_platforms pp "
+                    "LEFT JOIN social_accounts sa ON pp.social_account_id = sa.id "
+                    "WHERE pp.post_id = ?",
+                    (post_dict['id'],)
+                ).fetchall()
+                enriched.append(post_dict)
+
+            # Count by status
+            counts = {}
+            for s in ['draft', 'pending_approval', 'approved', 'publishing', 'published', 'rejected', 'failed']:
+                row = conn.execute("SELECT COUNT(*) as cnt FROM posts WHERE status = ?", (s,)).fetchone()
+                counts[s] = row['cnt']
+            counts['all'] = sum(counts.values())
+
+            return render_template('social/dashboard.html', posts=enriched,
+                                   status_filter=status_filter, counts=counts)
+        finally:
+            conn.close()
+
+    # =========================================================================
+    # POST CRUD
+    # =========================================================================
+
+    @bp.route('/compose')
+    @login_required
+    def compose():
+        """Post compose/edit form."""
+        post_id = request.args.get('post_id')
+        file_ids = request.args.get('file_ids', '')
+
+        conn = get_social_db(_db_path)
+        try:
+            post = None
+            post_media = []
+            post_platforms = []
+
+            if post_id:
+                post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+                if post:
+                    post = dict(post)
+                    # Check permissions
+                    if not current_user.is_admin and post['created_by'] != current_user.id:
+                        flash('You can only edit your own posts.', 'error')
+                        return redirect(url_for('social.dashboard'))
+
+                    post_media = conn.execute(
+                        "SELECT pm.*, f.name, f.type, f.id as gallery_file_id FROM post_media pm "
+                        "LEFT JOIN files f ON pm.file_id = f.id "
+                        "WHERE pm.post_id = ? ORDER BY pm.sort_order",
+                        (post_id,)
+                    ).fetchall()
+                    post_platforms = conn.execute(
+                        "SELECT social_account_id FROM post_platforms WHERE post_id = ?",
+                        (post_id,)
+                    ).fetchall()
+
+            # Get selected files from gallery (for new posts)
+            selected_files = []
+            if file_ids and not post_id:
+                ids = [fid.strip() for fid in file_ids.split(',') if fid.strip()]
+                if ids:
+                    placeholders = ','.join('?' * len(ids))
+                    selected_files = conn.execute(
+                        f"SELECT id, name, type FROM files WHERE id IN ({placeholders})",
+                        ids
+                    ).fetchall()
+
+            # Get available social accounts
+            accounts = conn.execute(
+                "SELECT * FROM social_accounts WHERE is_active = 1"
+            ).fetchall()
+
+            selected_account_ids = [row['social_account_id'] for row in post_platforms]
+
+            return render_template('social/compose.html',
+                                   post=post,
+                                   post_media=[dict(m) for m in post_media],
+                                   selected_files=[dict(f) for f in selected_files],
+                                   accounts=[dict(a) for a in accounts],
+                                   selected_account_ids=selected_account_ids)
+        finally:
+            conn.close()
+
+    @bp.route('/posts', methods=['POST'])
+    @login_required
+    def create_post():
+        """Create or update a post."""
+        post_id = request.form.get('post_id')
+        caption = request.form.get('caption', '').strip()
+        hashtags = request.form.get('hashtags', '').strip()
+        file_ids = request.form.getlist('file_ids')
+        account_ids = request.form.getlist('account_ids')
+        action = request.form.get('action', 'draft')  # draft, submit, approve_publish
+        scheduled_at = request.form.get('scheduled_at', '').strip()
+
+        now = time.time()
+        conn = get_social_db(_db_path)
+        try:
+            if post_id:
+                # Update existing post
+                post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+                if not post:
+                    flash('Post not found.', 'error')
+                    return redirect(url_for('social.dashboard'))
+
+                # Only creator or admin can edit
+                if not current_user.is_admin and post['created_by'] != current_user.id:
+                    flash('You can only edit your own posts.', 'error')
+                    return redirect(url_for('social.dashboard'))
+
+                # Determine new status
+                status = _determine_status(action, post['status'])
+
+                conn.execute(
+                    "UPDATE posts SET caption=?, hashtags=?, status=?, scheduled_at=?, updated_at=? WHERE id=?",
+                    (caption, hashtags, status,
+                     _parse_schedule(scheduled_at) if scheduled_at else None,
+                     now, post_id)
+                )
+
+                if action == 'approve_publish' and current_user.is_admin:
+                    conn.execute("UPDATE posts SET approved_by=? WHERE id=?",
+                                  (current_user.id, post_id))
+
+            else:
+                # Create new post
+                post_id = str(uuid.uuid4())
+                status = _determine_status(action, None)
+
+                conn.execute(
+                    "INSERT INTO posts (id, created_by, caption, hashtags, status, scheduled_at, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (post_id, current_user.id, caption, hashtags, status,
+                     _parse_schedule(scheduled_at) if scheduled_at else None,
+                     now, now)
+                )
+
+                if action == 'approve_publish' and current_user.is_admin:
+                    conn.execute("UPDATE posts SET approved_by=? WHERE id=?",
+                                  (current_user.id, post_id))
+
+            # Update media associations
+            conn.execute("DELETE FROM post_media WHERE post_id = ?", (post_id,))
+            for i, fid in enumerate(file_ids):
+                conn.execute(
+                    "INSERT INTO post_media (id, post_id, file_id, sort_order) VALUES (?, ?, ?, ?)",
+                    (str(uuid.uuid4()), post_id, fid, i)
+                )
+
+            # Update platform targets
+            conn.execute("DELETE FROM post_platforms WHERE post_id = ?", (post_id,))
+            for aid in account_ids:
+                conn.execute(
+                    "INSERT INTO post_platforms (id, post_id, social_account_id, status) VALUES (?, ?, ?, 'pending')",
+                    (str(uuid.uuid4()), post_id, aid)
+                )
+
+            conn.commit()
+
+            # If approve & publish immediately (no schedule)
+            if action == 'approve_publish' and current_user.is_admin and not scheduled_at:
+                publish_post_now(post_id, _db_path, current_app.secret_key)
+                flash('Post is being published.', 'success')
+            elif action == 'submit':
+                flash('Post submitted for approval.', 'success')
+            elif action == 'draft':
+                flash('Draft saved.', 'success')
+            elif action == 'approve_publish' and scheduled_at:
+                flash('Post approved and scheduled.', 'success')
+
+            return redirect(url_for('social.dashboard'))
+
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>/submit', methods=['POST'])
+    @login_required
+    def submit_post(post_id):
+        """Submit a draft for approval."""
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            if not current_user.is_admin and post['created_by'] != current_user.id:
+                return jsonify({'error': 'Permission denied'}), 403
+            if post['status'] not in ('draft', 'rejected'):
+                return jsonify({'error': 'Post cannot be submitted from current status'}), 400
+
+            conn.execute("UPDATE posts SET status='pending_approval', updated_at=? WHERE id=?",
+                          (time.time(), post_id))
+            conn.commit()
+            return jsonify({'status': 'pending_approval'})
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>/approve', methods=['POST'])
+    @admin_required
+    def approve_post(post_id):
+        """Approve a post for publishing."""
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            if post['status'] != 'pending_approval':
+                return jsonify({'error': 'Post is not pending approval'}), 400
+
+            conn.execute(
+                "UPDATE posts SET status='approved', approved_by=?, updated_at=? WHERE id=?",
+                (current_user.id, time.time(), post_id)
+            )
+            conn.commit()
+            return jsonify({'status': 'approved'})
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>/reject', methods=['POST'])
+    @admin_required
+    def reject_post(post_id):
+        """Reject a post."""
+        reason = request.json.get('reason', '') if request.is_json else request.form.get('reason', '')
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            if post['status'] != 'pending_approval':
+                return jsonify({'error': 'Post is not pending approval'}), 400
+
+            conn.execute(
+                "UPDATE posts SET status='rejected', rejection_reason=?, updated_at=? WHERE id=?",
+                (reason, time.time(), post_id)
+            )
+            conn.commit()
+            return jsonify({'status': 'rejected'})
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>/publish', methods=['POST'])
+    @admin_required
+    def publish_post(post_id):
+        """Immediately publish an approved post."""
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            if post['status'] not in ('approved', 'failed'):
+                return jsonify({'error': 'Post must be approved or failed to publish'}), 400
+
+            # Reset failed platform statuses for retry
+            if post['status'] == 'failed':
+                conn.execute(
+                    "UPDATE post_platforms SET status='pending', error_message=NULL WHERE post_id=? AND status='failed'",
+                    (post_id,)
+                )
+                conn.commit()
+
+            publish_post_now(post_id, _db_path, current_app.secret_key)
+            return jsonify({'status': 'publishing'})
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>', methods=['GET'])
+    @login_required
+    def get_post(post_id):
+        """Get post details as JSON."""
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute(
+                "SELECT p.*, u.display_name as creator_name FROM posts p "
+                "LEFT JOIN users u ON p.created_by = u.id WHERE p.id = ?",
+                (post_id,)
+            ).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+
+            post_dict = dict(post)
+            post_dict['media'] = [dict(m) for m in conn.execute(
+                "SELECT pm.*, f.name, f.type FROM post_media pm "
+                "LEFT JOIN files f ON pm.file_id = f.id "
+                "WHERE pm.post_id = ? ORDER BY pm.sort_order",
+                (post_id,)
+            ).fetchall()]
+            post_dict['platforms'] = [dict(p) for p in conn.execute(
+                "SELECT pp.*, sa.platform, sa.account_name FROM post_platforms pp "
+                "LEFT JOIN social_accounts sa ON pp.social_account_id = sa.id "
+                "WHERE pp.post_id = ?",
+                (post_id,)
+            ).fetchall()]
+            return jsonify(post_dict)
+        finally:
+            conn.close()
+
+    @bp.route('/posts/<post_id>', methods=['DELETE'])
+    @login_required
+    def delete_post(post_id):
+        """Delete a post."""
+        conn = get_social_db(_db_path)
+        try:
+            post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            if not current_user.is_admin and post['created_by'] != current_user.id:
+                return jsonify({'error': 'Permission denied'}), 403
+
+            conn.execute("DELETE FROM post_platforms WHERE post_id = ?", (post_id,))
+            conn.execute("DELETE FROM post_media WHERE post_id = ?", (post_id,))
+            conn.execute("DELETE FROM posts WHERE id = ?", (post_id,))
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    # =========================================================================
+    # OAUTH ROUTES
+    # =========================================================================
+
+    @bp.route('/oauth/<platform>/authorize')
+    @admin_required
+    def oauth_authorize(platform):
+        """Start OAuth flow for a platform."""
+        if platform == 'facebook':
+            if not facebook_available():
+                flash('Facebook credentials not configured.', 'error')
+                return redirect(url_for('social.settings'))
+            redirect_uri = url_for('social.oauth_callback', platform='facebook', _external=True)
+            return redirect(get_facebook_authorize_url(redirect_uri))
+
+        elif platform == 'linkedin':
+            if not linkedin_available():
+                flash('LinkedIn credentials not configured.', 'error')
+                return redirect(url_for('social.settings'))
+            state = str(uuid.uuid4())
+            session['oauth_state'] = state
+            redirect_uri = url_for('social.oauth_callback', platform='linkedin', _external=True)
+            return redirect(get_linkedin_authorize_url(redirect_uri, state))
+
+        flash(f'Unknown platform: {platform}', 'error')
+        return redirect(url_for('social.settings'))
+
+    @bp.route('/oauth/<platform>/callback')
+    @admin_required
+    def oauth_callback(platform):
+        """Handle OAuth callback from a platform."""
+        code = request.args.get('code')
+        error = request.args.get('error')
+
+        if error:
+            flash(f'OAuth error: {error}', 'error')
+            return redirect(url_for('social.settings'))
+        if not code:
+            flash('No authorization code received.', 'error')
+            return redirect(url_for('social.settings'))
+
+        try:
+            if platform == 'facebook':
+                redirect_uri = url_for('social.oauth_callback', platform='facebook', _external=True)
+                accounts = exchange_facebook_code(code, redirect_uri, current_app.secret_key)
+                for account_data in accounts:
+                    save_social_account(_db_path, current_user.id, account_data)
+                flash(f'{len(accounts)} account(s) connected.', 'success')
+
+            elif platform == 'linkedin':
+                # Verify state
+                expected_state = session.pop('oauth_state', None)
+                received_state = request.args.get('state')
+                if expected_state and received_state != expected_state:
+                    flash('OAuth state mismatch. Please try again.', 'error')
+                    return redirect(url_for('social.settings'))
+
+                redirect_uri = url_for('social.oauth_callback', platform='linkedin', _external=True)
+                account_data = exchange_linkedin_code(code, redirect_uri, current_app.secret_key)
+                save_social_account(_db_path, current_user.id, account_data)
+                flash('LinkedIn account connected.', 'success')
+
+            else:
+                flash(f'Unknown platform: {platform}', 'error')
+
+        except Exception as e:
+            flash(f'Error connecting account: {str(e)}', 'error')
+
+        return redirect(url_for('social.settings'))
+
+    # =========================================================================
+    # SOCIAL ACCOUNTS
+    # =========================================================================
+
+    @bp.route('/settings')
+    @admin_required
+    def settings():
+        """Settings page for connected accounts and user management."""
+        conn = get_social_db(_db_path)
+        try:
+            accounts = conn.execute(
+                "SELECT sa.*, u.display_name as connected_by FROM social_accounts sa "
+                "LEFT JOIN users u ON sa.user_id = u.id "
+                "ORDER BY sa.platform, sa.account_name"
+            ).fetchall()
+
+            users = conn.execute(
+                "SELECT * FROM users ORDER BY created_at"
+            ).fetchall()
+
+            return render_template('social/settings.html',
+                                   accounts=[dict(a) for a in accounts],
+                                   users=[dict(u) for u in users],
+                                   fb_available=facebook_available(),
+                                   li_available=linkedin_available())
+        finally:
+            conn.close()
+
+    @bp.route('/accounts/<account_id>', methods=['DELETE'])
+    @admin_required
+    def delete_account(account_id):
+        """Disconnect a social account."""
+        conn = get_social_db(_db_path)
+        try:
+            conn.execute("UPDATE social_accounts SET is_active=0, updated_at=? WHERE id=?",
+                          (time.time(), account_id))
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    # =========================================================================
+    # USER MANAGEMENT
+    # =========================================================================
+
+    @bp.route('/users', methods=['POST'])
+    @admin_required
+    def create_user():
+        """Create a new user."""
+        data = request.get_json() if request.is_json else request.form
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        display_name = data.get('display_name', '').strip() or username
+        role = data.get('role', 'submitter')
+
+        if role not in ('admin', 'submitter'):
+            role = 'submitter'
+
+        errors = []
+        if not username or len(username) < 3:
+            errors.append('Username must be at least 3 characters.')
+        if not password or len(password) < 8:
+            errors.append('Password must be at least 8 characters.')
+
+        if errors:
+            if request.is_json:
+                return jsonify({'errors': errors}), 400
+            flash(' '.join(errors), 'error')
+            return redirect(url_for('social.settings'))
+
+        try:
+            User.create(username, password, display_name, role, _db_path)
+            if request.is_json:
+                return jsonify({'success': True})
+            flash(f'User "{username}" created.', 'success')
+        except sqlite3.IntegrityError:
+            if request.is_json:
+                return jsonify({'errors': ['Username already exists.']}), 400
+            flash('Username already exists.', 'error')
+
+        return redirect(url_for('social.settings'))
+
+    @bp.route('/users/<user_id>', methods=['PUT'])
+    @admin_required
+    def update_user(user_id):
+        """Update a user's role or active status."""
+        data = request.get_json() if request.is_json else request.form
+        conn = get_social_db(_db_path)
+        try:
+            user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+
+            updates = []
+            params = []
+
+            if 'role' in data:
+                role = data['role']
+                if role in ('admin', 'submitter'):
+                    updates.append('role = ?')
+                    params.append(role)
+
+            if 'is_active' in data:
+                updates.append('is_active = ?')
+                params.append(1 if data['is_active'] else 0)
+
+            if 'display_name' in data:
+                updates.append('display_name = ?')
+                params.append(data['display_name'])
+
+            if 'password' in data and data['password']:
+                updates.append('password_hash = ?')
+                params.append(User.hash_password(data['password']))
+
+            if updates:
+                params.append(user_id)
+                conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+                conn.commit()
+
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    @bp.route('/users/<user_id>', methods=['DELETE'])
+    @admin_required
+    def delete_user(user_id):
+        """Delete a user."""
+        if user_id == current_user.id:
+            return jsonify({'error': 'Cannot delete your own account'}), 400
+
+        conn = get_social_db(_db_path)
+        try:
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+
+    # =========================================================================
+    # SHAREPOINT ROUTES
+    # =========================================================================
+
+    @bp.route('/sharepoint/status')
+    @admin_required
+    def sharepoint_status():
+        """Get SharePoint integration status."""
+        from social.sharepoint import sharepoint_available, SHAREPOINT_SITE_URL, SHAREPOINT_LIBRARY_NAME
+        return jsonify({
+            'available': sharepoint_available(),
+            'site_url': SHAREPOINT_SITE_URL,
+            'library': SHAREPOINT_LIBRARY_NAME,
+        })
+
+    @bp.route('/sharepoint/folders')
+    @admin_required
+    def sharepoint_folders():
+        """List SharePoint document library folders."""
+        from social.sharepoint import sharepoint_available, list_sharepoint_folders
+        if not sharepoint_available():
+            return jsonify({'error': 'SharePoint not configured'}), 400
+        try:
+            folders = list_sharepoint_folders()
+            return jsonify({'folders': folders})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @bp.route('/sharepoint/files')
+    @admin_required
+    def sharepoint_files():
+        """List SharePoint files (optionally in a sub-folder)."""
+        from social.sharepoint import sharepoint_available, list_sharepoint_files
+        if not sharepoint_available():
+            return jsonify({'error': 'SharePoint not configured'}), 400
+        folder = request.args.get('folder', '')
+        try:
+            files = list_sharepoint_files(folder_path=folder)
+            return jsonify({'files': files, 'folder': folder})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @bp.route('/sharepoint/sync', methods=['POST'])
+    @admin_required
+    def sharepoint_sync():
+        """Trigger a manual SharePoint sync."""
+        from social.sharepoint import sharepoint_available, sync_sharepoint_to_local
+        if not sharepoint_available():
+            return jsonify({'error': 'SharePoint not configured'}), 400
+        try:
+            import os as _os
+            cache_dir = _os.environ.get('SHAREPOINT_LOCAL_CACHE_DIR', '')
+            if not cache_dir:
+                from smartgallery import BASE_SMARTGALLERY_PATH
+                cache_dir = _os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
+            synced = sync_sharepoint_to_local(cache_dir)
+            return jsonify({'synced_count': len(synced), 'files': synced[:50]})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
+def _determine_status(action, current_status):
+    """Determine new post status based on action."""
+    if action == 'draft':
+        return 'draft'
+    elif action == 'submit':
+        return 'pending_approval'
+    elif action == 'approve_publish':
+        return 'approved'
+    return current_status or 'draft'
+
+
+def _parse_schedule(scheduled_at_str):
+    """Parse a datetime string to Unix timestamp."""
+    if not scheduled_at_str:
+        return None
+    try:
+        import datetime
+        dt = datetime.datetime.fromisoformat(scheduled_at_str)
+        return dt.timestamp()
+    except (ValueError, TypeError):
+        return None

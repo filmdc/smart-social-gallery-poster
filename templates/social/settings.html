@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Asset Gallery - Social Settings</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1a1a1a;
+            --surface-hover: #252525;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --text-color: #f8f9fa;
+            --text-muted: #adb5bd;
+            --border-color: #343a40;
+            --danger-color: #dc3545;
+            --success-color: #20c997;
+            --favorite-color: #ffc107;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .top-bar {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .top-bar h1 { font-size: 1.2rem; }
+        .top-bar a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .top-bar a:hover { color: var(--text-color); }
+        .content {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        .section {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .section h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--gradient-primary); color: white; }
+        .btn-secondary { background: var(--surface-hover); color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-danger { background: var(--danger-color); color: white; }
+        .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+
+        /* Account cards */
+        .account-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.8rem 1rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        .account-info {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+        .platform-badge {
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .platform-badge.facebook { background: #1877F2; color: white; }
+        .platform-badge.instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: white; }
+        .platform-badge.linkedin { background: #0A66C2; color: white; }
+
+        .connect-btns {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .connect-btn {
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            color: white;
+        }
+        .connect-btn.facebook { background: #1877F2; }
+        .connect-btn.instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743); }
+        .connect-btn.linkedin { background: #0A66C2; }
+        .connect-btn:hover { opacity: 0.85; }
+        .connect-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* User table */
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .user-table th, .user-table td {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+        .user-table th {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .role-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .role-badge.admin { background: rgba(0,123,255,0.2); color: var(--primary-color); }
+        .role-badge.submitter { background: rgba(173,181,189,0.2); color: var(--text-muted); }
+
+        /* Add user form */
+        .add-user-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto auto;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            align-items: end;
+        }
+        @media (max-width: 768px) {
+            .add-user-form {
+                grid-template-columns: 1fr;
+            }
+        }
+        .add-user-form label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.2rem;
+        }
+        .add-user-form input, .add-user-form select {
+            width: 100%;
+            padding: 0.5rem 0.8rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .add-user-form select {
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .not-configured {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        .flash-messages { max-width: 900px; margin: 1rem auto; padding: 0 2rem; }
+        .flash {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        .flash.success { background: rgba(32, 201, 151, 0.15); border: 1px solid var(--success-color); }
+        .flash.error { background: rgba(220, 53, 69, 0.15); border: 1px solid var(--danger-color); }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <h1>Settings</h1>
+        <div>
+            <a href="{{ url_for('social.dashboard') }}">Dashboard</a>
+            &nbsp;|&nbsp;
+            <a href="/galleryout/">Gallery</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="content">
+        <!-- Connected Accounts -->
+        <div class="section">
+            <h2>Connected Accounts</h2>
+            {% if accounts %}
+                {% for account in accounts %}
+                <div class="account-card" id="account-{{ account.id }}">
+                    <div class="account-info">
+                        <span class="platform-badge {{ account.platform }}">{{ account.platform }}</span>
+                        <span>{{ account.account_name }}</span>
+                        <span style="color:var(--text-muted);font-size:0.8rem;">
+                            ({{ account.account_type }})
+                            {% if not account.is_active %} - Disconnected{% endif %}
+                        </span>
+                    </div>
+                    {% if account.is_active %}
+                    <button class="btn btn-danger btn-sm" onclick="disconnectAccount('{{ account.id }}')">Disconnect</button>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+            <p style="color:var(--text-muted);font-size:0.9rem;">No accounts connected yet.</p>
+            {% endif %}
+
+            <div class="connect-btns">
+                {% if fb_available %}
+                <a href="{{ url_for('social.oauth_authorize', platform='facebook') }}"
+                   class="connect-btn facebook">Connect Facebook &amp; Instagram</a>
+                {% else %}
+                <span class="connect-btn facebook disabled" title="Set FB_APP_ID and FB_APP_SECRET environment variables">
+                    Facebook / Instagram
+                </span>
+                <span class="not-configured">Set FB_APP_ID + FB_APP_SECRET env vars</span>
+                {% endif %}
+
+                {% if li_available %}
+                <a href="{{ url_for('social.oauth_authorize', platform='linkedin') }}"
+                   class="connect-btn linkedin">Connect LinkedIn</a>
+                {% else %}
+                <span class="connect-btn linkedin disabled" title="Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET environment variables">
+                    LinkedIn
+                </span>
+                <span class="not-configured">Set LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET env vars</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- User Management -->
+        <div class="section">
+            <h2>User Management</h2>
+            <table class="user-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Display Name</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr id="user-{{ user.id }}">
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.display_name }}</td>
+                        <td>
+                            <select onchange="updateUserRole('{{ user.id }}', this.value)"
+                                    style="background:var(--bg-color);color:var(--text-color);border:1px solid var(--border-color);border-radius:4px;padding:2px 6px;font-size:0.8rem;">
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                <option value="submitter" {% if user.role == 'submitter' %}selected{% endif %}>Submitter</option>
+                            </select>
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span style="color:var(--success-color);font-size:0.85rem;">Active</span>
+                            {% else %}
+                            <span style="color:var(--danger-color);font-size:0.85rem;">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.id != current_user.id %}
+                            <button class="btn btn-danger btn-sm" onclick="deleteUser('{{ user.id }}', '{{ user.username }}')">Delete</button>
+                            {% else %}
+                            <span style="color:var(--text-muted);font-size:0.8rem;">(you)</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <form class="add-user-form" onsubmit="return addUser(event)">
+                <div>
+                    <label>Username</label>
+                    <input type="text" id="new-username" required minlength="3" placeholder="username">
+                </div>
+                <div>
+                    <label>Display Name</label>
+                    <input type="text" id="new-display-name" placeholder="Display Name">
+                </div>
+                <div>
+                    <label>Password</label>
+                    <input type="password" id="new-password" required minlength="8" placeholder="min 8 chars">
+                </div>
+                <div>
+                    <label>Role</label>
+                    <select id="new-role">
+                        <option value="submitter">Submitter</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    function disconnectAccount(accountId) {
+        if (!confirm('Disconnect this account?')) return;
+        fetch('/galleryout/social/accounts/' + accountId, {method: 'DELETE'})
+        .then(r => r.json()).then(data => {
+            if (data.success) location.reload();
+            else alert(data.error || 'Error disconnecting account');
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function updateUserRole(userId, role) {
+        fetch('/galleryout/social/users/' + userId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({role: role})
+        }).then(r => r.json()).then(data => {
+            if (!data.success) alert(data.error || 'Error updating user');
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function deleteUser(userId, username) {
+        if (!confirm('Delete user "' + username + '"? This cannot be undone.')) return;
+        fetch('/galleryout/social/users/' + userId, {method: 'DELETE'})
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                document.getElementById('user-' + userId).remove();
+            } else {
+                alert(data.error || 'Error deleting user');
+            }
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function addUser(e) {
+        e.preventDefault();
+        const data = {
+            username: document.getElementById('new-username').value,
+            display_name: document.getElementById('new-display-name').value,
+            password: document.getElementById('new-password').value,
+            role: document.getElementById('new-role').value,
+        };
+        fetch('/galleryout/social/users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(result => {
+            if (result.success) location.reload();
+            else if (result.errors) alert(result.errors.join('\n'));
+            else alert('Error creating user');
+        }).catch(err => alert('Error: ' + err));
+        return false;
+    }
+    </script>
+</body>
+</html>

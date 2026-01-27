@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartGallery: Smash Cut Generator</title>
+    <title>Smart Asset Gallery: Smash Cut Generator</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='galleryout/favicon.ico') }}">
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.css" rel="stylesheet">
     <style>
@@ -557,6 +557,529 @@
             height: 24px;
             font-size: 12px;
         }
+
+        /* Playback Settings Panel */
+        .playback-settings {
+            background: var(--surface-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .playback-settings h2 {
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
+        }
+
+        /* Per-clip transition selector */
+        .clip-transition-wrapper {
+            padding: 0.5rem 0.75rem;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .clip-transition {
+            width: 100%;
+            padding: 0.4rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            color: var(--text-color);
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .clip-transition:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        /* Player Overlay */
+        .player-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .player-overlay.hidden {
+            display: none;
+        }
+
+        /* Player Header */
+        .player-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem 1.5rem;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .player-overlay.controls-hidden .player-header {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .player-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            max-width: 40%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .player-controls-top {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .player-control-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .player-control-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .player-control-btn.active {
+            background: var(--primary-color);
+        }
+
+        .player-close-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .player-close-btn:hover {
+            opacity: 1;
+        }
+
+        /* Video Container */
+        .player-video-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .player-video {
+            max-width: 100%;
+            max-height: 100%;
+            position: absolute;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .player-video.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .player-video.transition-fade-out {
+            opacity: 0;
+        }
+
+        .player-video.transition-fade-in {
+            opacity: 1;
+        }
+
+        .player-video.transition-slide-left {
+            transform: translateX(-100%);
+        }
+
+        .player-video.transition-slide-right {
+            transform: translateX(100%);
+        }
+
+        .player-video.transition-slide-in-left {
+            animation: slideInFromRight 0.5s ease forwards;
+        }
+
+        .player-video.transition-slide-in-right {
+            animation: slideInFromLeft 0.5s ease forwards;
+        }
+
+        @keyframes slideInFromRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes slideInFromLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Navigation Buttons */
+        .player-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.5);
+            border: none;
+            color: white;
+            font-size: 2rem;
+            padding: 1rem 0.75rem;
+            cursor: pointer;
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .player-overlay:hover .player-nav,
+        .player-overlay:not(.controls-hidden) .player-nav {
+            opacity: 0.7;
+        }
+
+        .player-nav:hover {
+            opacity: 1 !important;
+            background: rgba(0,0,0,0.7);
+        }
+
+        .player-nav.prev {
+            left: 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .player-nav.next {
+            right: 0;
+            border-radius: 8px 0 0 8px;
+        }
+
+        .player-nav:disabled {
+            opacity: 0.3 !important;
+            cursor: not-allowed;
+        }
+
+        /* Player Footer */
+        .player-footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem 1.5rem 1.5rem;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .player-overlay.controls-hidden .player-footer {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Progress Bar */
+        .player-progress-container {
+            margin-bottom: 1rem;
+        }
+
+        .player-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .player-progress-bar:hover {
+            height: 8px;
+        }
+
+        .player-progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            border-radius: 3px;
+            transition: width 0.1s linear;
+        }
+
+        .player-progress-buffer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+        }
+
+        /* Player Controls Bottom */
+        .player-controls-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .player-controls-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .player-play-btn {
+            background: white;
+            border: none;
+            color: black;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .player-play-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .player-time {
+            color: white;
+            font-size: 0.85rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .player-volume-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .player-volume-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .player-volume-slider {
+            width: 80px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .player-volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .player-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .player-position {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .player-fullscreen-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        /* Playlist Preview Strip */
+        .playlist-preview {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding: 0.75rem 0;
+            margin-top: 0.5rem;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.3) transparent;
+        }
+
+        .playlist-preview::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .playlist-preview::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+
+        .playlist-preview-item {
+            flex-shrink: 0;
+            width: 80px;
+            aspect-ratio: 16/9;
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            opacity: 0.6;
+            transition: all 0.2s;
+        }
+
+        .playlist-preview-item:hover {
+            opacity: 0.9;
+        }
+
+        .playlist-preview-item.active {
+            border-color: var(--primary-color);
+            opacity: 1;
+        }
+
+        .playlist-preview-item.played {
+            opacity: 0.4;
+        }
+
+        .playlist-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Keyboard Shortcuts Bar */
+        .player-shortcuts {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px 8px 0 0;
+            display: none;
+            gap: 1.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .player-footer:hover .player-shortcuts {
+            display: flex;
+        }
+
+        .shortcut-key {
+            background: rgba(255,255,255,0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-family: monospace;
+            margin-right: 0.25rem;
+        }
+
+        /* Speed Control Dropdown */
+        .speed-dropdown {
+            position: relative;
+        }
+
+        .speed-dropdown-menu {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.5rem 0;
+            min-width: 100px;
+            display: none;
+            z-index: 20;
+        }
+
+        .speed-dropdown.open .speed-dropdown-menu {
+            display: block;
+        }
+
+        .speed-option {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.2s;
+        }
+
+        .speed-option:hover {
+            background: var(--surface-hover);
+        }
+
+        .speed-option.active {
+            color: var(--primary-color);
+        }
+
+        /* Transition Dropdown */
+        .transition-dropdown {
+            position: relative;
+        }
+
+        .transition-dropdown-menu {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.5rem 0;
+            min-width: 140px;
+            display: none;
+            z-index: 20;
+        }
+
+        .transition-dropdown.open .transition-dropdown-menu {
+            display: block;
+        }
+
+        .transition-option {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .transition-option:hover {
+            background: var(--surface-hover);
+        }
+
+        .transition-option.active {
+            color: var(--primary-color);
+        }
     </style>
 </head>
 <body>
@@ -631,6 +1154,7 @@
             <div class="summary-actions">
                 <button id="select-all-btn" class="btn">Select All</button>
                 <button id="deselect-all-btn" class="btn">Deselect All</button>
+                <button id="preview-playback-btn" class="btn btn-primary" disabled>Preview Playback</button>
             </div>
         </div>
 
@@ -638,6 +1162,55 @@
         <div id="preview-grid" class="preview-grid">
             <div class="empty-state">
                 Apply filters to see matching videos
+            </div>
+        </div>
+
+        <!-- Playback Settings -->
+        <div class="playback-settings">
+            <h2>Playback Settings</h2>
+            <div class="options-row">
+                <div class="option-group">
+                    <label>Sort Order</label>
+                    <select id="playback-sort">
+                        <option value="as-filtered">As Filtered</option>
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="duration-asc">Duration (Short First)</option>
+                        <option value="duration-desc">Duration (Long First)</option>
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label>Default Transition</label>
+                    <select id="playback-transition">
+                        <option value="none">None (Instant)</option>
+                        <option value="fade" selected>Fade</option>
+                        <option value="crossfade">Crossfade</option>
+                        <option value="slide-left">Slide Left</option>
+                        <option value="slide-right">Slide Right</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label>Transition Duration</label>
+                    <select id="playback-transition-duration">
+                        <option value="200">Fast (0.2s)</option>
+                        <option value="500" selected>Normal (0.5s)</option>
+                        <option value="1000">Slow (1s)</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="playback-shuffle">
+                        <span>Shuffle Playlist</span>
+                    </label>
+                    <label class="checkbox-group">
+                        <input type="checkbox" id="playback-loop" checked>
+                        <span>Loop Playlist</span>
+                    </label>
+                </div>
             </div>
         </div>
 
@@ -711,6 +1284,108 @@
         </div>
     </div>
 
+    <!-- Player Overlay -->
+    <div id="player-overlay" class="player-overlay hidden">
+        <!-- Header -->
+        <div class="player-header">
+            <div class="player-title" id="player-title">Video Title</div>
+            <div class="player-controls-top">
+                <!-- Speed Control -->
+                <div class="speed-dropdown" id="speed-dropdown">
+                    <button class="player-control-btn" id="speed-btn">1x</button>
+                    <div class="speed-dropdown-menu">
+                        <div class="speed-option" data-speed="0.5">0.5x</div>
+                        <div class="speed-option" data-speed="0.75">0.75x</div>
+                        <div class="speed-option active" data-speed="1">1x</div>
+                        <div class="speed-option" data-speed="1.25">1.25x</div>
+                        <div class="speed-option" data-speed="1.5">1.5x</div>
+                        <div class="speed-option" data-speed="2">2x</div>
+                    </div>
+                </div>
+
+                <!-- Shuffle Button -->
+                <button class="player-control-btn" id="player-shuffle-btn" title="Shuffle (S)">
+                    Shuffle
+                </button>
+
+                <!-- Transition Control -->
+                <div class="transition-dropdown" id="transition-dropdown">
+                    <button class="player-control-btn" id="transition-btn">Fade</button>
+                    <div class="transition-dropdown-menu">
+                        <div class="transition-option" data-transition="none">None</div>
+                        <div class="transition-option active" data-transition="fade">Fade</div>
+                        <div class="transition-option" data-transition="crossfade">Crossfade</div>
+                        <div class="transition-option" data-transition="slide-left">Slide Left</div>
+                        <div class="transition-option" data-transition="slide-right">Slide Right</div>
+                    </div>
+                </div>
+
+                <!-- Loop Button -->
+                <button class="player-control-btn active" id="player-loop-btn" title="Loop (L)">
+                    Loop
+                </button>
+
+                <!-- Close Button -->
+                <button class="player-close-btn" id="player-close-btn" title="Close (Esc)">&times;</button>
+            </div>
+        </div>
+
+        <!-- Video Container -->
+        <div class="player-video-container">
+            <video id="player-video-1" class="player-video" playsinline></video>
+            <video id="player-video-2" class="player-video hidden" playsinline></video>
+
+            <!-- Navigation Buttons -->
+            <button class="player-nav prev" id="player-prev-btn" title="Previous">&lt;</button>
+            <button class="player-nav next" id="player-next-btn" title="Next">&gt;</button>
+        </div>
+
+        <!-- Footer -->
+        <div class="player-footer">
+            <!-- Keyboard Shortcuts -->
+            <div class="player-shortcuts">
+                <span><span class="shortcut-key">Space</span> Play/Pause</span>
+                <span><span class="shortcut-key">&larr;</span><span class="shortcut-key">&rarr;</span> Prev/Next</span>
+                <span><span class="shortcut-key">S</span> Shuffle</span>
+                <span><span class="shortcut-key">L</span> Loop</span>
+                <span><span class="shortcut-key">M</span> Mute</span>
+                <span><span class="shortcut-key">F</span> Fullscreen</span>
+                <span><span class="shortcut-key">Esc</span> Close</span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="player-progress-container">
+                <div class="player-progress-bar" id="player-progress-bar">
+                    <div class="player-progress-fill" id="player-progress-fill"></div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="player-controls-bottom">
+                <div class="player-controls-left">
+                    <button class="player-play-btn" id="player-play-btn" title="Play/Pause (Space)">&#9654;</button>
+                    <span class="player-time">
+                        <span id="player-current-time">0:00</span> / <span id="player-duration">0:00</span>
+                    </span>
+
+                    <!-- Volume Control -->
+                    <div class="player-volume-control">
+                        <button class="player-volume-btn" id="player-volume-btn" title="Mute (M)">&#128266;</button>
+                        <input type="range" class="player-volume-slider" id="player-volume-slider" min="0" max="1" step="0.1" value="1">
+                    </div>
+                </div>
+
+                <div class="player-controls-right">
+                    <span class="player-position" id="player-position">1 / 10</span>
+                    <button class="player-fullscreen-btn" id="player-fullscreen-btn" title="Fullscreen (F)">&#x26F6;</button>
+                </div>
+            </div>
+
+            <!-- Playlist Preview -->
+            <div class="playlist-preview" id="playlist-preview"></div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
     <script>
         // Initialize Tom Select for multi-selects
@@ -735,12 +1410,15 @@
         const inputFilesSelect = new TomSelect('#input-files-filter', {
             plugins: ['remove_button'],
             placeholder: 'Any input file...',
+            maxOptions: 2000,  // Show up to 2000 options in dropdown
+            maxItems: null,    // Allow selecting multiple
+            closeAfterSelect: false,
             render: {
                 option: function(data, escape) {
                     const filename = data.value;
                     if (isPreviewableFile(filename)) {
                         return `<div class="input-file-option">
-                            <img class="input-file-thumb" src="/galleryout/input_file/${encodeURIComponent(filename)}"
+                            <img class="input-file-thumb" src="/galleryout/input_file_thumbnail/${encodeURIComponent(filename)}"
                                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" loading="lazy">
                             <div class="input-file-thumb-placeholder" style="display:none;">📷</div>
                             <span class="input-file-name">${escape(filename)}</span>
@@ -756,7 +1434,7 @@
                     const filename = data.value;
                     if (isPreviewableFile(filename)) {
                         return `<div class="input-file-item">
-                            <img class="input-file-thumb" src="/galleryout/input_file/${encodeURIComponent(filename)}"
+                            <img class="input-file-thumb" src="/galleryout/input_file_thumbnail/${encodeURIComponent(filename)}"
                                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" loading="lazy">
                             <div class="input-file-thumb-placeholder" style="display:none;">📷</div>
                             <span class="input-file-name">${escape(filename)}</span>
@@ -779,18 +1457,60 @@
         // State
         let filteredVideos = [];
         let selectedVideoIds = new Set();
+        let clipTransitions = new Map(); // Per-clip transition overrides
 
-        // Load available input files
-        fetch('/galleryout/smashcut/input_files')
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    data.input_files.forEach(file => {
+        // Load available input files based on selected folders
+        async function loadInputFiles(folderKeys = []) {
+            try {
+                // Clear existing options first
+                inputFilesSelect.clearOptions();
+
+                // Build query string with folder keys for workflow-referenced files
+                let url = '/galleryout/smashcut/input_files';
+                if (folderKeys.length > 0) {
+                    const params = folderKeys.map(k => `folder_keys=${encodeURIComponent(k)}`).join('&');
+                    url += '?' + params;
+                }
+
+                // Load workflow-referenced input files
+                const workflowResponse = await fetch(url);
+                const workflowData = await workflowResponse.json();
+
+                if (workflowData.status === 'success') {
+                    console.log(`Loaded ${workflowData.input_files.length} workflow-referenced input files`);
+                    workflowData.input_files.forEach(file => {
                         inputFilesSelect.addOption({ value: file, text: file });
                     });
                 }
-            })
-            .catch(err => console.error('Failed to load input files:', err));
+
+                // Load all files from input directory
+                const dirResponse = await fetch('/galleryout/smashcut/input_directory_files');
+                const dirData = await dirResponse.json();
+
+                if (dirData.status === 'success') {
+                    console.log(`Loaded ${dirData.count} files from input directory`);
+                    let addedCount = 0;
+                    dirData.files.forEach(file => {
+                        if (!inputFilesSelect.options[file]) {
+                            inputFilesSelect.addOption({ value: file, text: file });
+                            addedCount++;
+                        }
+                    });
+                    console.log(`Added ${addedCount} new files to dropdown (${Object.keys(inputFilesSelect.options).length} total)`);
+                }
+            } catch (err) {
+                console.error('Failed to load input files:', err);
+            }
+        }
+
+        // Initial load of input files
+        loadInputFiles();
+
+        // Reload input files when folder selection changes
+        folderSelect.on('change', function() {
+            const selectedFolders = folderSelect.getValue();
+            loadInputFiles(selectedFolders);
+        });
 
         // Apply Filters
         document.getElementById('apply-filters-btn').addEventListener('click', applyFilters);
@@ -848,31 +1568,59 @@
             grid.innerHTML = filteredVideos.map(video => {
                 const isSelected = selectedVideoIds.has(video.id);
                 const orderIndex = selectedArray.indexOf(video.id);
+                const currentTransition = clipTransitions.get(video.id) || 'default';
 
                 return `
                     <div class="preview-item ${isSelected ? 'selected' : ''}"
-                         data-id="${video.id}"
-                         onclick="toggleVideoSelection('${video.id}')">
-                        ${isSelected && orderIndex >= 0 ? `<span class="order-badge">${orderIndex + 1}</span>` : ''}
-                        ${video.is_favorite ? '<span class="favorite-badge">&#9733;</span>' : ''}
-                        <img src="${video.thumbnail_url}" alt="${video.name}" loading="lazy">
-                        <div class="preview-item-info">
-                            <div class="preview-item-name" title="${video.name}">${video.name}</div>
-                            <div class="preview-item-meta">
-                                <span>${video.duration || 'Unknown'}</span>
-                                <span>${video.dimensions || ''}</span>
+                         data-id="${video.id}">
+                        <div onclick="toggleVideoSelection('${video.id}')">
+                            ${isSelected && orderIndex >= 0 ? `<span class="order-badge">${orderIndex + 1}</span>` : ''}
+                            ${video.is_favorite ? '<span class="favorite-badge">&#9733;</span>' : ''}
+                            <img src="${video.thumbnail_url}" alt="${video.name}" loading="lazy">
+                            <div class="preview-item-info">
+                                <div class="preview-item-name" title="${video.name}">${video.name}</div>
+                                <div class="preview-item-meta">
+                                    <span>${video.duration || 'Unknown'}</span>
+                                    <span>${video.dimensions || ''}</span>
+                                </div>
                             </div>
+                        </div>
+                        <div class="clip-transition-wrapper">
+                            <select class="clip-transition" data-id="${video.id}" onclick="event.stopPropagation()" onchange="setClipTransition('${video.id}', this.value)">
+                                <option value="default" ${currentTransition === 'default' ? 'selected' : ''}>Default Transition</option>
+                                <option value="none" ${currentTransition === 'none' ? 'selected' : ''}>None</option>
+                                <option value="fade" ${currentTransition === 'fade' ? 'selected' : ''}>Fade</option>
+                                <option value="crossfade" ${currentTransition === 'crossfade' ? 'selected' : ''}>Crossfade</option>
+                                <option value="slide-left" ${currentTransition === 'slide-left' ? 'selected' : ''}>Slide Left</option>
+                                <option value="slide-right" ${currentTransition === 'slide-right' ? 'selected' : ''}>Slide Right</option>
+                            </select>
                         </div>
                     </div>
                 `;
             }).join('');
         }
 
-        function toggleVideoSelection(id) {
-            if (selectedVideoIds.has(id)) {
-                selectedVideoIds.delete(id);
+        function setClipTransition(videoId, transition) {
+            // Ensure consistent ID type
+            const numId = parseInt(videoId);
+            const normalizedId = isNaN(numId) ? videoId : numId;
+
+            if (transition === 'default') {
+                clipTransitions.delete(normalizedId);
             } else {
-                selectedVideoIds.add(id);
+                clipTransitions.set(normalizedId, transition);
+            }
+        }
+
+        function toggleVideoSelection(id) {
+            // Ensure consistent ID type (convert to number if it's a numeric string)
+            const numId = parseInt(id);
+            const normalizedId = isNaN(numId) ? id : numId;
+
+            if (selectedVideoIds.has(normalizedId)) {
+                selectedVideoIds.delete(normalizedId);
+            } else {
+                selectedVideoIds.add(normalizedId);
             }
             renderPreview();
             updateSummary();
@@ -885,6 +1633,7 @@
             document.getElementById('video-count').textContent = selectedVideos.length;
             document.getElementById('total-duration').textContent = formatDuration(totalSeconds);
             document.getElementById('generate-btn').disabled = selectedVideos.length === 0;
+            document.getElementById('preview-playback-btn').disabled = selectedVideos.length === 0;
         }
 
         function formatDuration(seconds) {
@@ -1020,6 +1769,785 @@
                     document.getElementById('close-progress-btn').style.display = 'inline-block';
                 });
         }
+
+        // ========================================
+        // Continuous Player
+        // ========================================
+
+        class ContinuousPlayer {
+            constructor() {
+                // State
+                this.playlist = [];
+                this.originalPlaylist = [];
+                this.currentIndex = 0;
+                this.isPlaying = false;
+                this.isShuffled = false;
+                this.loopPlaylist = true;
+                this.defaultTransition = 'fade';
+                this.transitionDuration = 500;
+                this.playbackSpeed = 1;
+                this.clipTransitions = new Map();
+                this.volume = 1;
+                this.isMuted = false;
+                this.activeVideoIndex = 1; // 1 or 2
+                this.isTransitioning = false;
+                this.controlsTimeout = null;
+
+                // DOM Elements
+                this.overlay = document.getElementById('player-overlay');
+                this.video1 = document.getElementById('player-video-1');
+                this.video2 = document.getElementById('player-video-2');
+                this.titleEl = document.getElementById('player-title');
+                this.playBtn = document.getElementById('player-play-btn');
+                this.prevBtn = document.getElementById('player-prev-btn');
+                this.nextBtn = document.getElementById('player-next-btn');
+                this.progressBar = document.getElementById('player-progress-bar');
+                this.progressFill = document.getElementById('player-progress-fill');
+                this.currentTimeEl = document.getElementById('player-current-time');
+                this.durationEl = document.getElementById('player-duration');
+                this.positionEl = document.getElementById('player-position');
+                this.playlistPreview = document.getElementById('playlist-preview');
+                this.volumeBtn = document.getElementById('player-volume-btn');
+                this.volumeSlider = document.getElementById('player-volume-slider');
+                this.shuffleBtn = document.getElementById('player-shuffle-btn');
+                this.loopBtn = document.getElementById('player-loop-btn');
+                this.speedBtn = document.getElementById('speed-btn');
+                this.transitionBtn = document.getElementById('transition-btn');
+                this.fullscreenBtn = document.getElementById('player-fullscreen-btn');
+
+                this.initEventListeners();
+                this.loadPreferences();
+            }
+
+            initEventListeners() {
+                // Video events
+                this.video1.addEventListener('ended', () => this.onVideoEnded());
+                this.video2.addEventListener('ended', () => this.onVideoEnded());
+                this.video1.addEventListener('timeupdate', () => this.updateProgress());
+                this.video2.addEventListener('timeupdate', () => this.updateProgress());
+                this.video1.addEventListener('loadedmetadata', () => this.onVideoLoaded(1));
+                this.video2.addEventListener('loadedmetadata', () => this.onVideoLoaded(2));
+
+                // Control buttons
+                document.getElementById('player-close-btn').addEventListener('click', () => this.close());
+                this.playBtn.addEventListener('click', () => this.togglePlayPause());
+                this.prevBtn.addEventListener('click', () => this.playPrevious());
+                this.nextBtn.addEventListener('click', () => this.playNext());
+
+                // Progress bar
+                this.progressBar.addEventListener('click', (e) => this.seekTo(e));
+
+                // Volume controls
+                this.volumeBtn.addEventListener('click', () => this.toggleMute());
+                this.volumeSlider.addEventListener('input', (e) => this.setVolume(parseFloat(e.target.value)));
+
+                // Shuffle and Loop buttons
+                this.shuffleBtn.addEventListener('click', () => this.toggleShuffle());
+                this.loopBtn.addEventListener('click', () => this.toggleLoop());
+
+                // Speed dropdown
+                document.getElementById('speed-dropdown').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('speed-option')) {
+                        this.setPlaybackSpeed(parseFloat(e.target.dataset.speed));
+                    } else {
+                        document.getElementById('speed-dropdown').classList.toggle('open');
+                    }
+                });
+
+                // Transition dropdown
+                document.getElementById('transition-dropdown').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('transition-option')) {
+                        this.setDefaultTransition(e.target.dataset.transition);
+                    } else {
+                        document.getElementById('transition-dropdown').classList.toggle('open');
+                    }
+                });
+
+                // Fullscreen button
+                this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+
+                // Mouse movement for controls visibility
+                this.overlay.addEventListener('mousemove', () => this.showControls());
+                this.overlay.addEventListener('mouseleave', () => this.hideControlsDelayed());
+
+                // Close dropdowns when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#speed-dropdown')) {
+                        document.getElementById('speed-dropdown').classList.remove('open');
+                    }
+                    if (!e.target.closest('#transition-dropdown')) {
+                        document.getElementById('transition-dropdown').classList.remove('open');
+                    }
+                });
+            }
+
+            loadPreferences() {
+                this.defaultTransition = localStorage.getItem('playerTransitionStyle') || 'fade';
+                this.transitionDuration = parseInt(localStorage.getItem('playerTransitionDuration')) || 500;
+                this.playbackSpeed = parseFloat(localStorage.getItem('playerPlaybackSpeed')) || 1;
+                this.loopPlaylist = localStorage.getItem('playerLoopPlaylist') !== 'false';
+                this.volume = parseFloat(localStorage.getItem('playerVolume')) || 1;
+
+                this.updateTransitionUI();
+                this.updateSpeedUI();
+                this.updateLoopUI();
+            }
+
+            savePreferences() {
+                localStorage.setItem('playerTransitionStyle', this.defaultTransition);
+                localStorage.setItem('playerTransitionDuration', this.transitionDuration.toString());
+                localStorage.setItem('playerPlaybackSpeed', this.playbackSpeed.toString());
+                localStorage.setItem('playerLoopPlaylist', this.loopPlaylist.toString());
+                localStorage.setItem('playerVolume', this.volume.toString());
+            }
+
+            open(videos, sortOrder, clipTransitionsMap) {
+                console.log('ContinuousPlayer.open called with', videos.length, 'videos');
+                if (videos.length === 0) {
+                    console.log('No videos to play');
+                    return;
+                }
+
+                this.originalPlaylist = [...videos];
+                this.playlist = [...videos];
+                this.clipTransitions = new Map(clipTransitionsMap);
+                this.currentIndex = 0;
+                this.isTransitioning = false;
+
+                // Apply sort order
+                this.applySortOrder(sortOrder);
+
+                // Sync with UI settings
+                this.isShuffled = document.getElementById('playback-shuffle').checked;
+                this.loopPlaylist = document.getElementById('playback-loop').checked;
+                this.defaultTransition = document.getElementById('playback-transition').value;
+                this.transitionDuration = parseInt(document.getElementById('playback-transition-duration').value);
+
+                if (this.isShuffled) {
+                    this.shufflePlaylist();
+                }
+
+                this.updateShuffleUI();
+                this.updateLoopUI();
+                this.updateTransitionUI();
+
+                // Show overlay
+                this.overlay.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+
+                // Load first video
+                this.loadVideo(0);
+                this.updatePlaylistPreview();
+            }
+
+            close() {
+                this.pause();
+                this.overlay.classList.add('hidden');
+                document.body.style.overflow = '';
+                this.video1.src = '';
+                this.video2.src = '';
+                this.savePreferences();
+            }
+
+            applySortOrder(sortOrder) {
+                switch (sortOrder) {
+                    case 'name-asc':
+                        this.playlist.sort((a, b) => a.name.localeCompare(b.name));
+                        break;
+                    case 'name-desc':
+                        this.playlist.sort((a, b) => b.name.localeCompare(a.name));
+                        break;
+                    case 'duration-asc':
+                        this.playlist.sort((a, b) => (a.duration_seconds || 0) - (b.duration_seconds || 0));
+                        break;
+                    case 'duration-desc':
+                        this.playlist.sort((a, b) => (b.duration_seconds || 0) - (a.duration_seconds || 0));
+                        break;
+                    case 'random':
+                        this.shufflePlaylist();
+                        break;
+                    // 'as-filtered' - keep original order
+                }
+            }
+
+            shufflePlaylist() {
+                for (let i = this.playlist.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.playlist[i], this.playlist[j]] = [this.playlist[j], this.playlist[i]];
+                }
+            }
+
+            loadVideo(index) {
+                if (index < 0 || index >= this.playlist.length) return;
+
+                this.currentIndex = index;
+                const video = this.playlist[index];
+                const activeVideo = this.getActiveVideo();
+
+                activeVideo.src = `/galleryout/file/${video.id}`;
+                activeVideo.playbackRate = this.playbackSpeed;
+                activeVideo.volume = this.isMuted ? 0 : this.volume;
+                activeVideo.load();
+
+                this.titleEl.textContent = video.name;
+                this.positionEl.textContent = `${index + 1} / ${this.playlist.length}`;
+                this.updateNavigationButtons();
+                this.updatePlaylistPreview();
+
+                // Preload next video
+                this.preloadNext();
+            }
+
+            preloadNext() {
+                const nextIndex = this.currentIndex + 1;
+                if (nextIndex < this.playlist.length) {
+                    const nextVideo = this.playlist[nextIndex];
+                    const inactiveVideo = this.getInactiveVideo();
+                    inactiveVideo.src = `/galleryout/file/${nextVideo.id}`;
+                    inactiveVideo.load();
+                }
+            }
+
+            getActiveVideo() {
+                return this.activeVideoIndex === 1 ? this.video1 : this.video2;
+            }
+
+            getInactiveVideo() {
+                return this.activeVideoIndex === 1 ? this.video2 : this.video1;
+            }
+
+            onVideoLoaded(videoNum) {
+                if (videoNum === this.activeVideoIndex) {
+                    const video = this.getActiveVideo();
+                    this.durationEl.textContent = this.formatTime(video.duration);
+                    if (this.isPlaying) {
+                        video.play().catch(err => console.log('Autoplay prevented:', err));
+                    }
+                }
+            }
+
+            onVideoEnded() {
+                if (this.isTransitioning) return;
+
+                if (this.currentIndex < this.playlist.length - 1) {
+                    this.playNext();
+                } else if (this.loopPlaylist) {
+                    this.playNext(); // Will wrap to 0
+                } else {
+                    this.pause();
+                }
+            }
+
+            play() {
+                this.isPlaying = true;
+                this.getActiveVideo().play().catch(err => console.log('Play prevented:', err));
+                this.playBtn.innerHTML = '&#10074;&#10074;';
+            }
+
+            pause() {
+                this.isPlaying = false;
+                this.getActiveVideo().pause();
+                this.getInactiveVideo().pause();
+                this.playBtn.innerHTML = '&#9654;';
+            }
+
+            togglePlayPause() {
+                if (this.isPlaying) {
+                    this.pause();
+                } else {
+                    this.play();
+                }
+            }
+
+            playNext() {
+                if (this.isTransitioning) return;
+
+                let nextIndex = this.currentIndex + 1;
+                if (nextIndex >= this.playlist.length) {
+                    if (this.loopPlaylist) {
+                        nextIndex = 0;
+                    } else {
+                        return;
+                    }
+                }
+
+                this.performTransition(nextIndex);
+            }
+
+            playPrevious() {
+                if (this.isTransitioning) return;
+
+                let prevIndex = this.currentIndex - 1;
+                if (prevIndex < 0) {
+                    if (this.loopPlaylist) {
+                        prevIndex = this.playlist.length - 1;
+                    } else {
+                        return;
+                    }
+                }
+
+                this.performTransition(prevIndex);
+            }
+
+            performTransition(newIndex) {
+                const currentVideo = this.playlist[this.currentIndex];
+                const clipTransition = this.clipTransitions.get(currentVideo.id);
+                const transition = clipTransition || this.defaultTransition;
+
+                const oldVideo = this.getActiveVideo();
+                const newVideo = this.getInactiveVideo();
+
+                // Set up new video
+                const nextVideoData = this.playlist[newIndex];
+                newVideo.src = `/galleryout/file/${nextVideoData.id}`;
+                newVideo.playbackRate = this.playbackSpeed;
+                newVideo.volume = this.isMuted ? 0 : this.volume;
+                newVideo.load();
+
+                this.isTransitioning = true;
+
+                // Perform the transition
+                switch (transition) {
+                    case 'none':
+                        this.transitionNone(oldVideo, newVideo, newIndex);
+                        break;
+                    case 'fade':
+                        this.transitionFade(oldVideo, newVideo, newIndex);
+                        break;
+                    case 'crossfade':
+                        this.transitionCrossfade(oldVideo, newVideo, newIndex);
+                        break;
+                    case 'slide-left':
+                        this.transitionSlide(oldVideo, newVideo, newIndex, 'left');
+                        break;
+                    case 'slide-right':
+                        this.transitionSlide(oldVideo, newVideo, newIndex, 'right');
+                        break;
+                    default:
+                        this.transitionFade(oldVideo, newVideo, newIndex);
+                }
+            }
+
+            transitionNone(oldVideo, newVideo, newIndex) {
+                oldVideo.pause();
+                oldVideo.classList.add('hidden');
+                newVideo.classList.remove('hidden');
+                this.activeVideoIndex = this.activeVideoIndex === 1 ? 2 : 1;
+                this.currentIndex = newIndex;
+                this.finishTransition(newIndex);
+            }
+
+            transitionFade(oldVideo, newVideo, newIndex) {
+                oldVideo.style.transition = `opacity ${this.transitionDuration}ms ease`;
+                oldVideo.classList.add('transition-fade-out');
+
+                setTimeout(() => {
+                    oldVideo.pause();
+                    oldVideo.classList.add('hidden');
+                    oldVideo.classList.remove('transition-fade-out');
+                    oldVideo.style.transition = '';
+                    oldVideo.style.opacity = '';
+
+                    newVideo.classList.remove('hidden');
+                    newVideo.style.opacity = '1';
+                    this.activeVideoIndex = this.activeVideoIndex === 1 ? 2 : 1;
+                    this.currentIndex = newIndex;
+                    this.finishTransition(newIndex);
+                }, this.transitionDuration);
+            }
+
+            transitionCrossfade(oldVideo, newVideo, newIndex) {
+                newVideo.classList.remove('hidden');
+                newVideo.style.opacity = '0';
+
+                oldVideo.style.transition = `opacity ${this.transitionDuration}ms ease`;
+                newVideo.style.transition = `opacity ${this.transitionDuration}ms ease`;
+
+                if (this.isPlaying) {
+                    newVideo.play().catch(() => {});
+                }
+
+                requestAnimationFrame(() => {
+                    oldVideo.style.opacity = '0';
+                    newVideo.style.opacity = '1';
+                });
+
+                setTimeout(() => {
+                    oldVideo.pause();
+                    oldVideo.classList.add('hidden');
+                    oldVideo.style.transition = '';
+                    oldVideo.style.opacity = '';
+                    newVideo.style.transition = '';
+
+                    this.activeVideoIndex = this.activeVideoIndex === 1 ? 2 : 1;
+                    this.currentIndex = newIndex;
+                    this.finishTransition(newIndex);
+                }, this.transitionDuration);
+            }
+
+            transitionSlide(oldVideo, newVideo, newIndex, direction) {
+                newVideo.classList.remove('hidden');
+                newVideo.style.transform = direction === 'left' ? 'translateX(100%)' : 'translateX(-100%)';
+                newVideo.style.opacity = '1';
+
+                oldVideo.style.transition = `transform ${this.transitionDuration}ms ease`;
+                newVideo.style.transition = `transform ${this.transitionDuration}ms ease`;
+
+                if (this.isPlaying) {
+                    newVideo.play().catch(() => {});
+                }
+
+                requestAnimationFrame(() => {
+                    oldVideo.style.transform = direction === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+                    newVideo.style.transform = 'translateX(0)';
+                });
+
+                setTimeout(() => {
+                    oldVideo.pause();
+                    oldVideo.classList.add('hidden');
+                    oldVideo.style.transition = '';
+                    oldVideo.style.transform = '';
+                    newVideo.style.transition = '';
+                    newVideo.style.transform = '';
+
+                    this.activeVideoIndex = this.activeVideoIndex === 1 ? 2 : 1;
+                    this.currentIndex = newIndex;
+                    this.finishTransition(newIndex);
+                }, this.transitionDuration);
+            }
+
+            finishTransition(newIndex) {
+                this.isTransitioning = false;
+                const video = this.playlist[newIndex];
+                this.titleEl.textContent = video.name;
+                this.positionEl.textContent = `${newIndex + 1} / ${this.playlist.length}`;
+                this.updateNavigationButtons();
+                this.updatePlaylistPreview();
+
+                if (this.isPlaying) {
+                    this.getActiveVideo().play().catch(() => {});
+                }
+
+                this.preloadNext();
+            }
+
+            seekTo(e) {
+                const rect = this.progressBar.getBoundingClientRect();
+                const percent = (e.clientX - rect.left) / rect.width;
+                const video = this.getActiveVideo();
+                video.currentTime = percent * video.duration;
+            }
+
+            updateProgress() {
+                const video = this.getActiveVideo();
+                if (video.duration) {
+                    const percent = (video.currentTime / video.duration) * 100;
+                    this.progressFill.style.width = `${percent}%`;
+                    this.currentTimeEl.textContent = this.formatTime(video.currentTime);
+                }
+            }
+
+            updateNavigationButtons() {
+                this.prevBtn.disabled = !this.loopPlaylist && this.currentIndex === 0;
+                this.nextBtn.disabled = !this.loopPlaylist && this.currentIndex === this.playlist.length - 1;
+            }
+
+            updatePlaylistPreview() {
+                this.playlistPreview.innerHTML = this.playlist.map((video, index) => {
+                    let classes = 'playlist-preview-item';
+                    if (index === this.currentIndex) classes += ' active';
+                    if (index < this.currentIndex) classes += ' played';
+
+                    return `
+                        <div class="${classes}" data-index="${index}" onclick="continuousPlayer.jumpTo(${index})">
+                            <img src="${video.thumbnail_url}" alt="${video.name}" loading="lazy">
+                        </div>
+                    `;
+                }).join('');
+
+                // Scroll active item into view
+                const activeItem = this.playlistPreview.querySelector('.active');
+                if (activeItem) {
+                    activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            }
+
+            jumpTo(index) {
+                if (index === this.currentIndex || this.isTransitioning) return;
+                this.performTransition(index);
+            }
+
+            toggleShuffle() {
+                this.isShuffled = !this.isShuffled;
+                document.getElementById('playback-shuffle').checked = this.isShuffled;
+
+                if (this.isShuffled) {
+                    // Keep current video, shuffle the rest
+                    const currentVideo = this.playlist[this.currentIndex];
+                    this.shufflePlaylist();
+                    // Move current video to the front
+                    const currentNewIndex = this.playlist.findIndex(v => v.id === currentVideo.id);
+                    if (currentNewIndex > 0) {
+                        this.playlist.splice(currentNewIndex, 1);
+                        this.playlist.unshift(currentVideo);
+                    }
+                    this.currentIndex = 0;
+                } else {
+                    // Restore original order
+                    const currentVideo = this.playlist[this.currentIndex];
+                    this.playlist = [...this.originalPlaylist];
+                    this.currentIndex = this.playlist.findIndex(v => v.id === currentVideo.id);
+                }
+
+                this.updateShuffleUI();
+                this.updatePlaylistPreview();
+                this.updateNavigationButtons();
+            }
+
+            toggleLoop() {
+                this.loopPlaylist = !this.loopPlaylist;
+                document.getElementById('playback-loop').checked = this.loopPlaylist;
+                this.updateLoopUI();
+                this.updateNavigationButtons();
+                this.savePreferences();
+            }
+
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                const volume = this.isMuted ? 0 : this.volume;
+                this.video1.volume = volume;
+                this.video2.volume = volume;
+                this.updateVolumeUI();
+            }
+
+            setVolume(volume) {
+                this.volume = volume;
+                this.isMuted = volume === 0;
+                this.video1.volume = volume;
+                this.video2.volume = volume;
+                this.updateVolumeUI();
+                this.savePreferences();
+            }
+
+            setPlaybackSpeed(speed) {
+                this.playbackSpeed = speed;
+                this.video1.playbackRate = speed;
+                this.video2.playbackRate = speed;
+                this.updateSpeedUI();
+                document.getElementById('speed-dropdown').classList.remove('open');
+                this.savePreferences();
+            }
+
+            setDefaultTransition(transition) {
+                this.defaultTransition = transition;
+                document.getElementById('playback-transition').value = transition;
+                this.updateTransitionUI();
+                document.getElementById('transition-dropdown').classList.remove('open');
+                this.savePreferences();
+            }
+
+            toggleFullscreen() {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    this.overlay.requestFullscreen().catch(err => console.log('Fullscreen failed:', err));
+                }
+            }
+
+            showControls() {
+                this.overlay.classList.remove('controls-hidden');
+                clearTimeout(this.controlsTimeout);
+                this.hideControlsDelayed();
+            }
+
+            hideControlsDelayed() {
+                clearTimeout(this.controlsTimeout);
+                this.controlsTimeout = setTimeout(() => {
+                    if (this.isPlaying) {
+                        this.overlay.classList.add('controls-hidden');
+                    }
+                }, 3000);
+            }
+
+            handleKeyboard(e) {
+                if (this.overlay.classList.contains('hidden')) return;
+
+                // Prevent default for handled keys
+                const handledKeys = ['Space', 'KeyK', 'ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'KeyS', 'KeyL', 'KeyM', 'KeyF', 'Escape'];
+                if (handledKeys.includes(e.code)) {
+                    e.preventDefault();
+                }
+
+                switch (e.code) {
+                    case 'Space':
+                    case 'KeyK':
+                        this.togglePlayPause();
+                        break;
+                    case 'ArrowRight':
+                        if (e.shiftKey) {
+                            // Skip 10 seconds forward
+                            this.getActiveVideo().currentTime += 10;
+                        } else {
+                            this.playNext();
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        if (e.shiftKey) {
+                            // Skip 10 seconds back
+                            this.getActiveVideo().currentTime -= 10;
+                        } else {
+                            this.playPrevious();
+                        }
+                        break;
+                    case 'ArrowUp':
+                        this.setVolume(Math.min(1, this.volume + 0.1));
+                        this.volumeSlider.value = this.volume;
+                        break;
+                    case 'ArrowDown':
+                        this.setVolume(Math.max(0, this.volume - 0.1));
+                        this.volumeSlider.value = this.volume;
+                        break;
+                    case 'KeyS':
+                        this.toggleShuffle();
+                        break;
+                    case 'KeyL':
+                        this.toggleLoop();
+                        break;
+                    case 'KeyM':
+                        this.toggleMute();
+                        break;
+                    case 'KeyF':
+                        this.toggleFullscreen();
+                        break;
+                    case 'Escape':
+                        this.close();
+                        break;
+                }
+
+                this.showControls();
+            }
+
+            updateShuffleUI() {
+                if (this.isShuffled) {
+                    this.shuffleBtn.classList.add('active');
+                } else {
+                    this.shuffleBtn.classList.remove('active');
+                }
+            }
+
+            updateLoopUI() {
+                if (this.loopPlaylist) {
+                    this.loopBtn.classList.add('active');
+                } else {
+                    this.loopBtn.classList.remove('active');
+                }
+            }
+
+            updateSpeedUI() {
+                this.speedBtn.textContent = `${this.playbackSpeed}x`;
+                document.querySelectorAll('.speed-option').forEach(opt => {
+                    opt.classList.toggle('active', parseFloat(opt.dataset.speed) === this.playbackSpeed);
+                });
+            }
+
+            updateTransitionUI() {
+                const labels = {
+                    'none': 'None',
+                    'fade': 'Fade',
+                    'crossfade': 'Crossfade',
+                    'slide-left': 'Slide L',
+                    'slide-right': 'Slide R'
+                };
+                this.transitionBtn.textContent = labels[this.defaultTransition] || 'Fade';
+                document.querySelectorAll('.transition-option').forEach(opt => {
+                    opt.classList.toggle('active', opt.dataset.transition === this.defaultTransition);
+                });
+            }
+
+            updateVolumeUI() {
+                this.volumeSlider.value = this.isMuted ? 0 : this.volume;
+                if (this.isMuted || this.volume === 0) {
+                    this.volumeBtn.innerHTML = '&#128263;'; // Muted icon
+                } else if (this.volume < 0.5) {
+                    this.volumeBtn.innerHTML = '&#128265;'; // Low volume
+                } else {
+                    this.volumeBtn.innerHTML = '&#128266;'; // High volume
+                }
+            }
+
+            formatTime(seconds) {
+                if (!seconds || isNaN(seconds)) return '0:00';
+                const m = Math.floor(seconds / 60);
+                const s = Math.floor(seconds % 60);
+                return `${m}:${String(s).padStart(2, '0')}`;
+            }
+        }
+
+        // Initialize the continuous player
+        let continuousPlayer;
+        try {
+            continuousPlayer = new ContinuousPlayer();
+            console.log('ContinuousPlayer initialized successfully');
+        } catch (e) {
+            console.error('Failed to initialize ContinuousPlayer:', e);
+        }
+
+        // Preview Playback button handler
+        const previewBtn = document.getElementById('preview-playback-btn');
+        if (previewBtn) {
+            previewBtn.addEventListener('click', () => {
+                console.log('Preview Playback clicked');
+                console.log('filteredVideos:', filteredVideos.length);
+                console.log('selectedVideoIds:', selectedVideoIds.size);
+
+                // Get videos that are selected
+                const selectedVideos = filteredVideos.filter(v => selectedVideoIds.has(v.id));
+                console.log('selectedVideos after filter:', selectedVideos.length);
+
+                if (selectedVideos.length === 0) {
+                    console.log('No videos selected for playback');
+                    return;
+                }
+
+                // Preserve selection order
+                const orderedVideos = Array.from(selectedVideoIds)
+                    .map(id => filteredVideos.find(v => v.id === id))
+                    .filter(v => v);
+
+                const sortOrder = document.getElementById('playback-sort').value;
+                console.log('Opening player with', orderedVideos.length, 'videos');
+
+                if (!continuousPlayer) {
+                    console.error('ContinuousPlayer not initialized');
+                    return;
+                }
+
+                continuousPlayer.open(orderedVideos, sortOrder, clipTransitions);
+            });
+            console.log('Preview Playback button handler attached');
+        } else {
+            console.error('Preview Playback button not found!');
+        }
+
+        // Sync playback settings with player preferences on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTransition = localStorage.getItem('playerTransitionStyle');
+            const savedDuration = localStorage.getItem('playerTransitionDuration');
+            const savedLoop = localStorage.getItem('playerLoopPlaylist');
+
+            if (savedTransition) {
+                document.getElementById('playback-transition').value = savedTransition;
+            }
+            if (savedDuration) {
+                document.getElementById('playback-transition-duration').value = savedDuration;
+            }
+            if (savedLoop !== null) {
+                document.getElementById('playback-loop').checked = savedLoop !== 'false';
+            }
+        });
     </script>
 </body>
 </html>

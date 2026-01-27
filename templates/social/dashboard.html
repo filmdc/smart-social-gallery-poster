@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Asset Gallery - Social Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1a1a1a;
+            --surface-hover: #252525;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --text-color: #f8f9fa;
+            --text-muted: #adb5bd;
+            --border-color: #343a40;
+            --danger-color: #dc3545;
+            --success-color: #20c997;
+            --favorite-color: #ffc107;
+            --workflow-color: #28a745;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .top-bar {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .top-bar h1 { font-size: 1.2rem; }
+        .top-bar-links { display: flex; gap: 1rem; align-items: center; }
+        .top-bar-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .top-bar-links a:hover { color: var(--text-color); }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--gradient-primary); color: white; }
+        .btn-secondary { background: var(--surface-hover); color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-success { background: var(--success-color); color: #000; }
+        .btn-danger { background: var(--danger-color); color: white; }
+        .btn-warning { background: var(--favorite-color); color: #000; }
+        .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            padding: 0 2rem;
+            margin-top: 1rem;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab {
+            padding: 0.7rem 1.2rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+        .tab:hover { color: var(--text-color); }
+        .tab.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+        .tab .count {
+            background: var(--surface-hover);
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            margin-left: 4px;
+        }
+        .tab.active .count { background: rgba(0,123,255,0.2); }
+
+        .posts-container {
+            max-width: 1000px;
+            margin: 1.5rem auto;
+            padding: 0 2rem;
+        }
+        .post-card {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.2rem;
+            margin-bottom: 1rem;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 1rem;
+            align-items: start;
+        }
+        .post-thumb {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: var(--bg-color);
+        }
+        .post-thumb-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            background: var(--bg-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+        }
+        .post-body { min-width: 0; }
+        .post-caption {
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .post-meta {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-draft { background: rgba(173, 181, 189, 0.2); color: var(--text-muted); }
+        .status-pending_approval { background: rgba(255, 193, 7, 0.2); color: var(--favorite-color); }
+        .status-approved { background: rgba(0, 123, 255, 0.2); color: var(--primary-color); }
+        .status-publishing { background: rgba(32, 201, 151, 0.2); color: var(--success-color); }
+        .status-published { background: rgba(40, 167, 69, 0.2); color: var(--workflow-color); }
+        .status-rejected { background: rgba(220, 53, 69, 0.2); color: var(--danger-color); }
+        .status-failed { background: rgba(220, 53, 69, 0.3); color: var(--danger-color); }
+
+        .platform-badges {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .platform-badge {
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .platform-badge.facebook { background: #1877F2; color: white; }
+        .platform-badge.instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743); color: white; }
+        .platform-badge.linkedin { background: #0A66C2; color: white; }
+        .platform-badge.failed { opacity: 0.5; text-decoration: line-through; }
+
+        .post-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            align-items: flex-end;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+        .empty-state p { margin-bottom: 1rem; }
+
+        .flash-messages { max-width: 1000px; margin: 1rem auto; padding: 0 2rem; }
+        .flash {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        .flash.success { background: rgba(32, 201, 151, 0.15); border: 1px solid var(--success-color); }
+        .flash.error { background: rgba(220, 53, 69, 0.15); border: 1px solid var(--danger-color); }
+        .flash.info { background: rgba(0, 123, 255, 0.15); border: 1px solid var(--primary-color); }
+
+        /* Reject modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal-content h3 { margin-bottom: 1rem; }
+        .modal-content textarea {
+            width: 100%;
+            padding: 0.7rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <h1>Social Dashboard</h1>
+        <div class="top-bar-links">
+            <a href="{{ url_for('social.compose') }}" class="btn btn-primary btn-sm">+ New Post</a>
+            {% if current_user.is_admin %}
+            <a href="{{ url_for('social.settings') }}">Settings</a>
+            {% endif %}
+            <a href="/galleryout/">Gallery</a>
+            <a href="{{ url_for('social.logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <div class="tabs">
+        {% set tabs = [
+            ('all', 'All'),
+            ('draft', 'Drafts'),
+            ('pending_approval', 'Pending'),
+            ('approved', 'Approved'),
+            ('publishing', 'Publishing'),
+            ('published', 'Published'),
+            ('rejected', 'Rejected'),
+            ('failed', 'Failed'),
+        ] %}
+        {% for key, label in tabs %}
+        <a href="{{ url_for('social.dashboard', status=key) }}"
+           class="tab {% if status_filter == key %}active{% endif %}">
+            {{ label }}<span class="count">{{ counts.get(key, 0) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="posts-container">
+        {% if posts %}
+            {% for post in posts %}
+            <div class="post-card" id="post-{{ post.id }}">
+                <!-- Thumbnail -->
+                {% if post.media and post.media|length > 0 %}
+                    <img class="post-thumb"
+                         src="/galleryout/thumbnail/{{ post.media[0].file_id }}"
+                         alt="Post media">
+                {% else %}
+                    <div class="post-thumb-placeholder">T</div>
+                {% endif %}
+
+                <!-- Body -->
+                <div class="post-body">
+                    <div class="post-caption">{{ post.caption or '(no caption)' }}</div>
+                    <div class="post-meta">
+                        <span class="status-badge status-{{ post.status }}">{{ post.status|replace('_', ' ') }}</span>
+                        <span>by {{ post.creator_name or 'Unknown' }}</span>
+                        {% if post.scheduled_at %}
+                        <span>Scheduled</span>
+                        {% endif %}
+                        {% if post.media %}
+                        <span>{{ post.media|length }} media</span>
+                        {% endif %}
+                    </div>
+                    {% if post.platforms %}
+                    <div class="platform-badges" style="margin-top:0.4rem;">
+                        {% for p in post.platforms %}
+                        <span class="platform-badge {{ p.platform }} {% if p.status == 'failed' %}failed{% endif %}"
+                              title="{{ p.account_name }}{% if p.error_message %} - {{ p.error_message }}{% endif %}">
+                            {{ p.platform }}{% if p.status == 'published' %} OK{% elif p.status == 'failed' %} ERR{% endif %}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if post.rejection_reason %}
+                    <div style="margin-top:0.4rem;font-size:0.8rem;color:var(--danger-color);">
+                        Reason: {{ post.rejection_reason }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Actions -->
+                <div class="post-actions">
+                    {% if post.status in ('draft', 'rejected') %}
+                        <a href="{{ url_for('social.compose', post_id=post.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                        {% if post.status == 'draft' or post.status == 'rejected' %}
+                        <button class="btn btn-primary btn-sm" onclick="submitPost('{{ post.id }}')">Submit</button>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if post.status == 'pending_approval' and current_user.is_admin %}
+                        <a href="{{ url_for('social.compose', post_id=post.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                        <button class="btn btn-success btn-sm" onclick="approvePost('{{ post.id }}')">Approve</button>
+                        <button class="btn btn-danger btn-sm" onclick="showRejectModal('{{ post.id }}')">Reject</button>
+                    {% endif %}
+
+                    {% if post.status == 'approved' and current_user.is_admin %}
+                        <button class="btn btn-success btn-sm" onclick="publishPost('{{ post.id }}')">Publish Now</button>
+                    {% endif %}
+
+                    {% if post.status == 'failed' and current_user.is_admin %}
+                        <button class="btn btn-warning btn-sm" onclick="publishPost('{{ post.id }}')">Retry</button>
+                    {% endif %}
+
+                    {% if post.status not in ('publishing', 'published') %}
+                    <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div class="empty-state">
+            <p>No posts found{% if status_filter != 'all' %} with status "{{ status_filter|replace('_', ' ') }}"{% endif %}.</p>
+            <a href="{{ url_for('social.compose') }}" class="btn btn-primary">Create Your First Post</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Reject Modal -->
+    <div class="modal-overlay" id="reject-modal">
+        <div class="modal-content">
+            <h3>Reject Post</h3>
+            <textarea id="reject-reason" placeholder="Reason for rejection (optional)..."></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-secondary btn-sm" onclick="closeRejectModal()">Cancel</button>
+                <button class="btn btn-danger btn-sm" id="reject-confirm-btn">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    let rejectPostId = null;
+
+    function showRejectModal(postId) {
+        rejectPostId = postId;
+        document.getElementById('reject-reason').value = '';
+        document.getElementById('reject-modal').classList.add('active');
+    }
+
+    function closeRejectModal() {
+        rejectPostId = null;
+        document.getElementById('reject-modal').classList.remove('active');
+    }
+
+    document.getElementById('reject-confirm-btn').addEventListener('click', function() {
+        if (!rejectPostId) return;
+        const reason = document.getElementById('reject-reason').value;
+        fetch('/galleryout/social/posts/' + rejectPostId + '/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({reason: reason})
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'rejected') location.reload();
+            else alert(data.error || 'Error rejecting post');
+        }).catch(err => alert('Error: ' + err));
+        closeRejectModal();
+    });
+
+    function submitPost(postId) {
+        fetch('/galleryout/social/posts/' + postId + '/submit', {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            if (data.status === 'pending_approval') location.reload();
+            else alert(data.error || 'Error submitting post');
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function approvePost(postId) {
+        fetch('/galleryout/social/posts/' + postId + '/approve', {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            if (data.status === 'approved') location.reload();
+            else alert(data.error || 'Error approving post');
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function publishPost(postId) {
+        fetch('/galleryout/social/posts/' + postId + '/publish', {method: 'POST'})
+        .then(r => r.json()).then(data => {
+            if (data.status === 'publishing') location.reload();
+            else alert(data.error || 'Error publishing post');
+        }).catch(err => alert('Error: ' + err));
+    }
+
+    function deletePost(postId) {
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        fetch('/galleryout/social/posts/' + postId, {method: 'DELETE'})
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                document.getElementById('post-' + postId).remove();
+            } else {
+                alert(data.error || 'Error deleting post');
+            }
+        }).catch(err => alert('Error: ' + err));
+    }
+    </script>
+</body>
+</html>

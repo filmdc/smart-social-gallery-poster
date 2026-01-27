@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Asset Gallery - {% if post %}Edit Post{% else %}Compose Post{% endif %}</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1a1a1a;
+            --surface-hover: #252525;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --text-color: #f8f9fa;
+            --text-muted: #adb5bd;
+            --border-color: #343a40;
+            --danger-color: #dc3545;
+            --success-color: #20c997;
+            --favorite-color: #ffc107;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .top-bar {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .top-bar h1 { font-size: 1.2rem; }
+        .top-bar a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .top-bar a:hover { color: var(--text-color); }
+        .compose-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        @media (max-width: 768px) {
+            .compose-layout { grid-template-columns: 1fr; }
+        }
+        .panel {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .panel h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .media-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            cursor: grab;
+        }
+        .media-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .media-item .remove-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(220, 53, 69, 0.9);
+            border: none;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .media-item .order-badge {
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .media-type-badge {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(0,0,0,0.7);
+            color: var(--favorite-color);
+            font-size: 0.65rem;
+            padding: 2px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        textarea, input[type="text"], input[type="datetime-local"] {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 0.95rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            resize: vertical;
+        }
+        textarea:focus, input:focus { border-color: var(--primary-color); }
+        .char-counter {
+            text-align: right;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.3rem;
+        }
+        .char-counter.warning { color: var(--favorite-color); }
+        .char-counter.over { color: var(--danger-color); }
+        .platform-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .platform-item {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.6rem 0.8rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .platform-item:hover { background: var(--surface-hover); }
+        .platform-item input { accent-color: var(--primary-color); }
+        .platform-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .platform-badge.facebook { background: #1877F2; color: white; }
+        .platform-badge.instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color: white; }
+        .platform-badge.linkedin { background: #0A66C2; color: white; }
+        .schedule-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.8rem;
+        }
+        .schedule-toggle input[type="checkbox"] {
+            accent-color: var(--primary-color);
+        }
+        .actions-bar {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 0.7rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--gradient-primary); color: white; }
+        .btn-secondary { background: var(--surface-hover); color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-success { background: var(--success-color); color: #000; }
+        .btn-danger { background: var(--danger-color); color: white; }
+        .no-accounts {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            padding: 1rem;
+            text-align: center;
+        }
+        .no-accounts a { color: var(--primary-color); }
+        .flash-messages { max-width: 1200px; margin: 1rem auto; padding: 0 2rem; }
+        .flash {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        .flash.success { background: rgba(32, 201, 151, 0.15); border: 1px solid var(--success-color); }
+        .flash.error { background: rgba(220, 53, 69, 0.15); border: 1px solid var(--danger-color); }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <h1>{% if post %}Edit Post{% else %}New Post{% endif %}</h1>
+        <div>
+            <a href="{{ url_for('social.dashboard') }}">Dashboard</a>
+            &nbsp;|&nbsp;
+            <a href="/galleryout/">Gallery</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('social.create_post') }}" id="compose-form">
+        {% if post %}
+        <input type="hidden" name="post_id" value="{{ post.id }}">
+        {% endif %}
+
+        <div class="compose-layout">
+            <!-- Left: Media Panel -->
+            <div class="panel">
+                <h2>Media</h2>
+                <div class="media-grid" id="media-grid">
+                    {% if post_media %}
+                        {% for m in post_media %}
+                        <div class="media-item" data-file-id="{{ m.gallery_file_id or m.file_id }}" draggable="true">
+                            <img src="/galleryout/thumbnail/{{ m.gallery_file_id or m.file_id }}" alt="{{ m.name }}">
+                            <span class="media-type-badge">{{ m.type or 'file' }}</span>
+                            <span class="order-badge">#{{ loop.index }}</span>
+                            <button type="button" class="remove-btn" onclick="removeMedia(this)">&times;</button>
+                            <input type="hidden" name="file_ids" value="{{ m.gallery_file_id or m.file_id }}">
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                    {% if selected_files %}
+                        {% for f in selected_files %}
+                        <div class="media-item" data-file-id="{{ f.id }}" draggable="true">
+                            <img src="/galleryout/thumbnail/{{ f.id }}" alt="{{ f.name }}">
+                            <span class="media-type-badge">{{ f.type or 'file' }}</span>
+                            <span class="order-badge">#{{ loop.index }}</span>
+                            <button type="button" class="remove-btn" onclick="removeMedia(this)">&times;</button>
+                            <input type="hidden" name="file_ids" value="{{ f.id }}">
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                <p style="font-size:0.8rem;color:var(--text-muted);">Drag to reorder. Media will be posted in order shown.</p>
+            </div>
+
+            <!-- Right: Compose Form -->
+            <div class="panel">
+                <h2>Compose</h2>
+
+                <div class="form-group">
+                    <label for="caption">Caption</label>
+                    <textarea id="caption" name="caption" rows="6" placeholder="Write your post caption...">{{ post.caption if post else '' }}</textarea>
+                    <div class="char-counter" id="char-counter">0 characters</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="hashtags">Hashtags (comma-separated)</label>
+                    <input type="text" id="hashtags" name="hashtags" placeholder="CALV, community, lehighvalley"
+                           value="{{ post.hashtags if post else '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label>Target Platforms</label>
+                    {% if accounts %}
+                    <div class="platform-list">
+                        {% for account in accounts %}
+                        <label class="platform-item">
+                            <input type="checkbox" name="account_ids" value="{{ account.id }}"
+                                   {% if account.id in selected_account_ids %}checked{% endif %}>
+                            <span class="platform-badge {{ account.platform }}">{{ account.platform }}</span>
+                            <span>{{ account.account_name }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="no-accounts">
+                        No social accounts connected. {% if current_user.is_admin %}<a href="{{ url_for('social.settings') }}">Connect accounts</a>{% else %}Ask an admin to connect accounts.{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <div class="schedule-toggle">
+                        <input type="checkbox" id="schedule-check" {% if post and post.scheduled_at %}checked{% endif %}>
+                        <label for="schedule-check" style="color:var(--text-color);font-size:0.95rem;">Schedule for later</label>
+                    </div>
+                    <div id="schedule-picker" style="{% if not post or not post.scheduled_at %}display:none;{% endif %}">
+                        <input type="datetime-local" name="scheduled_at" id="scheduled-at"
+                               {% if post and post.scheduled_at %}value="{{ post.scheduled_at }}"{% endif %}>
+                    </div>
+                </div>
+
+                <div class="actions-bar">
+                    <button type="submit" name="action" value="draft" class="btn btn-secondary">Save Draft</button>
+                    <button type="submit" name="action" value="submit" class="btn btn-primary">Submit for Review</button>
+                    {% if current_user.is_admin %}
+                    <button type="submit" name="action" value="approve_publish" class="btn btn-success">
+                        {% if post and post.scheduled_at %}Approve &amp; Schedule{% else %}Approve &amp; Publish{% endif %}
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <script>
+    // Character counter
+    const captionEl = document.getElementById('caption');
+    const counterEl = document.getElementById('char-counter');
+    const LIMITS = { facebook: 63206, instagram: 2200, linkedin: 3000 };
+
+    function updateCounter() {
+        const len = captionEl.value.length;
+        const minLimit = Math.min(...Object.values(LIMITS));
+        counterEl.textContent = len + ' characters';
+        counterEl.className = 'char-counter';
+        if (len > minLimit) counterEl.classList.add('over');
+        else if (len > minLimit * 0.9) counterEl.classList.add('warning');
+    }
+    captionEl.addEventListener('input', updateCounter);
+    updateCounter();
+
+    // Schedule toggle
+    document.getElementById('schedule-check').addEventListener('change', function() {
+        document.getElementById('schedule-picker').style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) document.getElementById('scheduled-at').value = '';
+    });
+
+    // Remove media item
+    function removeMedia(btn) {
+        btn.closest('.media-item').remove();
+        updateOrderBadges();
+    }
+
+    function updateOrderBadges() {
+        document.querySelectorAll('#media-grid .media-item').forEach((item, i) => {
+            const badge = item.querySelector('.order-badge');
+            if (badge) badge.textContent = '#' + (i + 1);
+        });
+    }
+
+    // Drag and drop reorder
+    let dragItem = null;
+    const grid = document.getElementById('media-grid');
+
+    grid.addEventListener('dragstart', (e) => {
+        dragItem = e.target.closest('.media-item');
+        if (dragItem) dragItem.style.opacity = '0.5';
+    });
+    grid.addEventListener('dragend', (e) => {
+        if (dragItem) dragItem.style.opacity = '1';
+        dragItem = null;
+    });
+    grid.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const target = e.target.closest('.media-item');
+        if (target && target !== dragItem) {
+            const rect = target.getBoundingClientRect();
+            const mid = rect.left + rect.width / 2;
+            if (e.clientX < mid) {
+                grid.insertBefore(dragItem, target);
+            } else {
+                grid.insertBefore(dragItem, target.nextSibling);
+            }
+        }
+    });
+    grid.addEventListener('drop', (e) => {
+        e.preventDefault();
+        updateOrderBadges();
+    });
+    </script>
+</body>
+</html>

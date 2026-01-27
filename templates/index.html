@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartGallery: {{ current_folder_info.display_name }}</title>
+    <title>Smart Asset Gallery: {{ current_folder_info.display_name }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='galleryout/favicon.ico') }}">
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.css" rel="stylesheet">
     <style>
@@ -2219,7 +2219,7 @@
     <aside class="sidebar">
         <div class="sidebar-header">
             <a href="{{ url_for('gallery_view', folder_key='_root_') }}" style="text-decoration: none;">
-                <h1>SmartGallery</h1>
+                <h1>Smart Asset Gallery</h1>
             </a>
             <div class="sidebar-actions">
                 <button id="sidebar-expand-btn" title="Expand Sidebar">
@@ -2242,6 +2242,20 @@
         </div>
         <button id="create-folder-btn">➕ Create New Folder</button>
         <a href="/galleryout/smashcut" id="smashcut-link-btn">Smash Cut Generator</a>
+        {% if social_enabled is defined and social_enabled %}
+        <a href="/galleryout/social/dashboard" id="social-link-btn" style="display:block;text-align:center;padding:0.6rem 1rem;margin:0.3rem 1rem;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:8px;text-decoration:none;font-size:0.85rem;font-weight:600;transition:opacity 0.2s;">Social Posts</a>
+        {% endif %}
+        {% if social_enabled is defined and social_enabled %}
+        <div style="text-align:center;padding:0.4rem 1rem;font-size:0.8rem;">
+            {% if current_user is defined and current_user.is_authenticated %}
+            <span style="color:var(--text-muted);">{{ current_user.display_name }}</span>
+            &nbsp;|&nbsp;
+            <a href="/galleryout/social/logout" style="color:var(--text-muted);text-decoration:none;">Logout</a>
+            {% else %}
+            <a href="/galleryout/social/login" style="color:var(--text-muted);text-decoration:none;">Login (Social)</a>
+            {% endif %}
+        </div>
+        {% endif %}
     </aside>
     <div class="main-content">
         <header class="breadcrumbs">
@@ -2355,7 +2369,7 @@
         <span id="selection-counter">0 files selected</span>
         <div class="actions-grid"><button id="move-selected-btn">📁 Move</button><button id="favorite-selected-btn">⭐
                 Add</button><button id="unfavorite-selected-btn">☆ Remove</button><button id="download-zip-btn">📦
-                Zip</button><button id="compare-btn" style="display:none;">🔍 Compare</button><button id="delete-selected-btn" class="delete-btn">🗑️ Delete</button><button
+                Zip</button><button id="compare-btn" style="display:none;">🔍 Compare</button>{% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}<button id="social-post-btn" onclick="postSelectedToSocial()" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-color:#764ba2;">📤 Post</button>{% endif %}<button id="delete-selected-btn" class="delete-btn">🗑️ Delete</button><button
                 id="range-select-btn" style="display:none;">↔️ Range</button><button id="select-all-btn">✅
                 All</button><button id="deselect-all-btn">❌ None</button></div>
     </div>
@@ -2386,7 +2400,7 @@
                 <button id="lightbox-rename-btn" title="Rename File">✏️</button>
                 <button id="lightbox-summary-btn" title="Node Summary">📝</button>
                 <a id="lightbox-workflow" href="#" class="workflow-btn" title="Download Workflow">⚙️</a>
-                <button id="lightbox-send-comfyui" title="Open in ComfyUI">🚀</button>
+                <button id="lightbox-send-comfyui" title="Open in Workflow Tool">🚀</button>
                 <button id="lightbox-delete-btn" title="Delete File">🗑️</button>
                 <a id="lightbox-new-tab" href="#" target="_blank" title="Open in New Tab">↗️</a>
                 <button class="close-btn" onclick="closeLightbox()" title="Close">×</button>
@@ -2431,7 +2445,7 @@
             </div>
             <div class="kb-separator"></div>
 
-            <!-- Open in ComfyUI -->
+            <!-- Open in Workflow Tool -->
             <div class="kb-group">
                 <span class="kb-key">C</span>
                 <span>Open in Comfy</span>
@@ -2546,7 +2560,7 @@
                 <div class="shortcut-item"><span class="key">S</span> <span class="desc">Download Image</span></div>
                 <div class="shortcut-item"><span class="key">W</span> <span class="desc">Download Workflow (if
                         available)</span></div>
-                <div class="shortcut-item"><span class="key">C</span> <span class="desc">Open in ComfyUI (if
+                <div class="shortcut-item"><span class="key">C</span> <span class="desc">Open in Workflow Tool (if
                         available)</span></div>
                 <div class="shortcut-item"><span class="key">L</span> <span class="desc">Refresh View</span></div>
                 <div class="shortcut-item"><span class="key">K</span> <span class="desc">Rescan Folder</span></div>
@@ -2914,6 +2928,11 @@
         function deleteSelected() { const count = selectedFiles.size; if (count > 0 && confirm(`🗑️ Delete ${count} files? This cannot be undone.`)) { performBatchAction('/galleryout/delete_batch', { file_ids: [...selectedFiles] }); } }
         function favoriteSelected(status) { if (selectedFiles.size === 0) return; performBatchAction('/galleryout/favorite_batch', { file_ids: [...selectedFiles], status: status }); }
         function performBatchAction(url, body) { fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(handleGenericResponse).catch(handleError); }
+        function postSelectedToSocial() {
+            if (selectedFiles.size === 0) { showNotification('Select at least one file first.', 'warning'); return; }
+            const fileIds = [...selectedFiles].join(',');
+            window.location.href = '/galleryout/social/compose?file_ids=' + encodeURIComponent(fileIds);
+        }
         function downloadSelectedZip() {
             if (selectedFiles.size === 0) return;
             const fileIds = [...selectedFiles];
@@ -3217,7 +3236,7 @@ function showItemAtIndex(index) {
         }
         function deleteFromLightbox(noConfirm = false) { if (currentLightboxIndex < 0 || currentLightboxIndex >= galleryItems.length) return; const itemToDelete = galleryItems[currentLightboxIndex]; const fileId = itemToDelete.dataset.fileId; const deleteBtn = document.getElementById('lightbox-delete-btn'); const proceedWithDelete = () => { deleteBtn.disabled = true; fetch(`/galleryout/delete/${fileId}`, { method: 'POST' }).then(res => res.json().then(data => ({ ok: res.ok, data }))).then(({ ok, data }) => { if (ok && data.status === 'success') { showNotification(data.message || 'File deleted!', 'success'); itemToDelete.remove(); galleryItems.splice(currentLightboxIndex, 1); allFilesData = allFilesData.filter(f => f.id !== fileId); currentItemCount--; updateFileCountBadge(); if (galleryItems.length === 0) { closeLightbox(); showEmptyState(); } else { if (currentLightboxIndex >= galleryItems.length) { currentLightboxIndex = galleryItems.length - 1; } showItemAtIndex(currentLightboxIndex); } } else { throw new Error(data.message || 'Deletion failed on the server.'); } }).catch(handleError).finally(() => { if (deleteBtn) { deleteBtn.disabled = false; } }); }; if (noConfirm || confirm('🗑️ Are you sure you want to delete this file? This cannot be undone.')) { proceedWithDelete(); } }
 
-        // --- SEND TO COMFYUI FEATURE ---
+        // --- SEND TO WORKFLOW TOOL FEATURE ---
 
         function sendToComfyUI(fileId, action = 'load') {
             const btn = document.getElementById('lightbox-send-comfyui');
@@ -3234,35 +3253,35 @@ function showItemAtIndex(index) {
             .then(({ ok, status, data }) => {
                 if (ok && data.status === 'success') {
                     if (action === 'queue') {
-                        showNotification(`Workflow queued in ComfyUI! (Queue #${data.number || 'N/A'})`, 'success');
+                        showNotification(`Workflow queued! (Queue #${data.number || 'N/A'})`, 'success');
                     } else if (action === 'load') {
-                        // Copy workflow to clipboard and open ComfyUI
+                        // Copy workflow to clipboard
                         const workflowJson = JSON.stringify(data.workflow);
                         navigator.clipboard.writeText(workflowJson).then(() => {
                             const comfyUrl = data.comfyui_url || 'http://127.0.0.1:8188';
                             window.open(comfyUrl, '_blank');
-                            showNotification('Workflow copied! Press Ctrl+V in ComfyUI to paste it.', 'success');
+                            showNotification('Workflow copied to clipboard!', 'success');
                         }).catch(err => {
                             console.error('Clipboard error:', err);
-                            // Fallback: still open ComfyUI
+                            // Fallback: open workflow tool
                             const comfyUrl = data.comfyui_url || 'http://127.0.0.1:8188';
                             window.open(comfyUrl, '_blank');
-                            showNotification('ComfyUI opened. Drag the image file onto ComfyUI to load the workflow.', 'info');
+                            showNotification('Workflow tool opened. Drag the file to load the workflow.', 'info');
                         });
                     }
                 } else if (status === 503) {
-                    showNotification('ComfyUI is not running or not reachable. Please start ComfyUI first.', 'error');
+                    showNotification('Workflow tool is not running or not reachable.', 'error');
                 } else if (data.suggestion === 'load') {
-                    if (confirm('This workflow is in UI format and cannot be queued directly.\n\nWould you like to open ComfyUI instead?')) {
+                    if (confirm('This workflow is in UI format and cannot be queued directly.\n\nWould you like to open the workflow tool instead?')) {
                         sendToComfyUI(fileId, 'load');
                     }
                 } else {
-                    throw new Error(data.message || 'Failed to send workflow to ComfyUI.');
+                    throw new Error(data.message || 'Failed to send workflow.');
                 }
             })
             .catch(error => {
-                console.error('Send to ComfyUI error:', error);
-                showNotification(error.message || 'Failed to send workflow to ComfyUI.', 'error');
+                console.error('Send workflow error:', error);
+                showNotification(error.message || 'Failed to send workflow.', 'error');
             })
             .finally(() => {
                 if (btn) btn.disabled = false;
