@@ -1111,15 +1111,6 @@
                 </div>
 
                 <div class="filter-group">
-                    <label>LoRAs Used</label>
-                    <select id="lora-filter" multiple placeholder="Any LoRA...">
-                        {% for lora in available_loras %}
-                        <option value="{{ lora }}">{{ lora }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="filter-group">
                     <label>Search in Workflow</label>
                     <input type="text" id="text-pattern-filter" placeholder="Search workflow JSON...">
                 </div>
@@ -1449,11 +1440,6 @@
             }
         });
 
-        const loraSelect = new TomSelect('#lora-filter', {
-            plugins: ['remove_button'],
-            placeholder: 'Any LoRA...'
-        });
-
         // State
         let filteredVideos = [];
         let selectedVideoIds = new Set();
@@ -1524,7 +1510,6 @@
             const filters = {
                 folder_keys: folderSelect.getValue(),
                 input_files: inputFilesSelect.getValue(),
-                loras: loraSelect.getValue(),
                 text_pattern: document.getElementById('text-pattern-filter').value,
                 favorites_only: document.getElementById('favorites-filter').checked
             };

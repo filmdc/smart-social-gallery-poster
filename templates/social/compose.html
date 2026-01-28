@@ -337,7 +337,7 @@
                 <div class="actions-bar">
                     <button type="submit" name="action" value="draft" class="btn btn-secondary">Save Draft</button>
                     <button type="submit" name="action" value="submit" class="btn btn-primary">Submit for Review</button>
-                    {% if current_user.is_admin %}
+                    {% if current_user.can_post_without_approval %}
                     <button type="submit" name="action" value="approve_publish" class="btn btn-success">
                         {% if post and post.scheduled_at %}Approve &amp; Schedule{% else %}Approve &amp; Publish{% endif %}
                     </button>

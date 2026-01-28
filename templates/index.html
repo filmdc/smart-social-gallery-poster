@@ -2311,16 +2311,6 @@
                             <option value="{{ pfx }}" {% if pfx in selected_prefixes %}selected{% endif %}>{{ pfx }}
                             </option>{% endif %}{% endfor %}
                         </select></div>
-                    <div class="filter-group"><label for="model-select">🧠 Models</label><select name="model"
-                            id="model-select" multiple>{% for model in available_models %}
-                            <option value="{{ model }}" {% if model in selected_models %}selected{% endif %}>{{ model }}
-                            </option>{% endfor %}
-                        </select></div>
-                    <div class="filter-group"><label for="lora-select">🎨 LoRAs</label><select name="lora"
-                            id="lora-select" multiple>{% for lora in available_loras %}
-                            <option value="{{ lora }}" {% if lora in selected_loras %}selected{% endif %}>{{ lora }}
-                            </option>{% endfor %}
-                        </select></div>
                     <div class="filter-group">
                         <div class="filter-group-inline"><input type="checkbox" name="favorites" id="favorites-check"
                                 value="true" {% if show_favorites %}checked{% endif %}><label for="favorites-check">⭐
@@ -3707,8 +3697,6 @@ async function showNodeSummary(event, fileId) {
 
             new TomSelect('#extension-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📄 Select extensions...' });
             new TomSelect('#prefix-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏷️ Select prefixes...' });
-            new TomSelect('#model-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🧠 Select models...' });
-            new TomSelect('#lora-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🎨 Select LoRAs...' });
 
             // View size slider functionality
             const viewSizeSlider = document.getElementById('view-size-slider');

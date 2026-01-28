@@ -1171,34 +1171,6 @@ def scan_folder_and_extract_options(folder_path):
     except Exception as e: print(f"ERROR: Could not scan folder '{folder_path}': {e}")
     return file_count, sorted(list(extensions)), sorted(list(prefixes))
 
-def get_models_and_loras_for_folder(folder_path):
-    """
-    Queries the database to get all unique models and LoRAs for files in a folder.
-    Returns (sorted_models_list, sorted_loras_list).
-    """
-    models = set()
-    loras = set()
-
-    with get_db_connection() as conn:
-        folder_path_norm = os.path.normpath(folder_path)
-        # Get all files in this folder (not subfolders)
-        rows = conn.execute(
-            "SELECT models, loras FROM files WHERE path LIKE ?",
-            (folder_path + os.sep + '%',)
-        ).fetchall()
-
-        for row in rows:
-            # Only include files directly in this folder, not subfolders
-            try:
-                file_models = json.loads(row['models'] or '[]')
-                file_loras = json.loads(row['loras'] or '[]')
-                models.update(file_models)
-                loras.update(file_loras)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-    return (sorted(list(models)), sorted(list(loras)))
-
 def initialize_gallery():
     print("INFO: Initializing gallery...")
     global FFPROBE_EXECUTABLE_PATH
@@ -1316,28 +1288,6 @@ def gallery_view(folder_key):
             params.extend([f"%.{ext.lstrip('.').lower()}" for ext in selected_extensions if ext.strip()])
             if ext_conditions: conditions.append(f"({' OR '.join(ext_conditions)})")
 
-        # Model filtering
-        selected_models = request.args.getlist('model')
-        if selected_models:
-            model_conditions = []
-            for model in selected_models:
-                if model.strip():
-                    model_conditions.append("models LIKE ?")
-                    params.append(f'%"{model.strip()}"%')
-            if model_conditions:
-                conditions.append(f"({' OR '.join(model_conditions)})")
-
-        # LoRA filtering
-        selected_loras = request.args.getlist('lora')
-        if selected_loras:
-            lora_conditions = []
-            for lora in selected_loras:
-                if lora.strip():
-                    lora_conditions.append("loras LIKE ?")
-                    params.append(f'%"{lora.strip()}"%')
-            if lora_conditions:
-                conditions.append(f"({' OR '.join(lora_conditions)})")
-
         sort_direction = "ASC" if sort_order == 'asc' else "DESC"
         query = f"SELECT * FROM files WHERE {' AND '.join(conditions)} ORDER BY {sort_by} {sort_direction}"
         
@@ -1348,7 +1298,6 @@ def gallery_view(folder_key):
     gallery_view_cache = all_files_filtered
     initial_files = gallery_view_cache[:PAGE_SIZE]
     total_folder_files, extensions, prefixes = scan_folder_and_extract_options(folder_path)
-    available_models, available_loras = get_models_and_loras_for_folder(folder_path)
     breadcrumbs, ancestor_keys = [], set()
     curr_key = folder_key
     while curr_key is not None and curr_key in folders:
@@ -1369,12 +1318,8 @@ def gallery_view(folder_key):
                            ancestor_keys=list(ancestor_keys),
                            available_extensions=extensions,
                            available_prefixes=prefixes,
-                           available_models=available_models,
-                           available_loras=available_loras,
                            selected_extensions=request.args.getlist('extension'),
                            selected_prefixes=request.args.getlist('prefix'),
-                           selected_models=request.args.getlist('model'),
-                           selected_loras=request.args.getlist('lora'),
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
                            protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
                            social_enabled=SOCIAL_FEATURES_ENABLED)
@@ -2441,23 +2386,8 @@ def smashcut_page():
     """Serves the smash cut generator page."""
     folders = get_dynamic_folder_config(force_refresh=True)
 
-    # Get all unique LoRAs across all videos
-    with get_db_connection() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT loras FROM files WHERE type = 'video' AND loras != '[]'"
-        ).fetchall()
-
-    all_loras = set()
-    for row in rows:
-        try:
-            loras = json.loads(row['loras'] or '[]')
-            all_loras.update(loras)
-        except:
-            pass
-
     return render_template('smashcut.html',
-                          folders=folders,
-                          available_loras=sorted(list(all_loras)))
+                          folders=folders)
 
 
 @app.route('/galleryout/smashcut/input_files')
@@ -2619,7 +2549,6 @@ def smashcut_filter():
     folder_keys = data.get('folder_keys', [])
     input_files_filter = data.get('input_files', [])
     text_pattern = data.get('text_pattern', '').strip()
-    loras_filter = data.get('loras', [])
     favorites_only = data.get('favorites_only', False)
 
     folders = get_dynamic_folder_config()
@@ -2642,16 +2571,6 @@ def smashcut_filter():
         # Favorites filtering
         if favorites_only:
             conditions.append("is_favorite = 1")
-
-        # LoRA filtering
-        if loras_filter:
-            lora_conditions = []
-            for lora in loras_filter:
-                if lora.strip():
-                    lora_conditions.append("loras LIKE ?")
-                    params.append(f'%"{lora.strip()}"%')
-            if lora_conditions:
-                conditions.append(f"({' OR '.join(lora_conditions)})")
 
         query = f"SELECT * FROM files WHERE {' AND '.join(conditions)} ORDER BY mtime DESC"
         videos = conn.execute(query, params).fetchall()
