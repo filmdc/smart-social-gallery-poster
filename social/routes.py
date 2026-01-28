@@ -794,6 +794,231 @@ def register_routes(bp, db_path):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    # =========================================================================
+    # USER PREFERENCES ROUTES
+    # =========================================================================
+
+    @bp.route('/preferences', methods=['GET'])
+    @login_required
+    def get_preferences():
+        """Get current user's preferences."""
+        conn = get_social_db(_db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM user_preferences WHERE user_id = ?",
+                (current_user.id,)
+            ).fetchone()
+
+            if row:
+                import json
+                return jsonify({
+                    'favorite_folders': json.loads(row['favorite_folders'] or '[]'),
+                    'favorite_files': json.loads(row['favorite_files'] or '[]'),
+                    'starting_folder': row['starting_folder']
+                })
+            else:
+                return jsonify({
+                    'favorite_folders': [],
+                    'favorite_files': [],
+                    'starting_folder': None
+                })
+        finally:
+            conn.close()
+
+    @bp.route('/preferences', methods=['PUT'])
+    @login_required
+    def update_preferences():
+        """Update current user's preferences."""
+        data = request.get_json() if request.is_json else {}
+        conn = get_social_db(_db_path)
+        try:
+            import json
+
+            # Check if preferences exist
+            existing = conn.execute(
+                "SELECT id FROM user_preferences WHERE user_id = ?",
+                (current_user.id,)
+            ).fetchone()
+
+            now = time.time()
+
+            if existing:
+                # Update existing preferences
+                updates = []
+                params = []
+
+                if 'favorite_folders' in data:
+                    updates.append('favorite_folders = ?')
+                    params.append(json.dumps(data['favorite_folders']))
+
+                if 'favorite_files' in data:
+                    updates.append('favorite_files = ?')
+                    params.append(json.dumps(data['favorite_files']))
+
+                if 'starting_folder' in data:
+                    updates.append('starting_folder = ?')
+                    params.append(data['starting_folder'])
+
+                if updates:
+                    updates.append('updated_at = ?')
+                    params.append(now)
+                    params.append(current_user.id)
+                    conn.execute(
+                        f"UPDATE user_preferences SET {', '.join(updates)} WHERE user_id = ?",
+                        params
+                    )
+            else:
+                # Create new preferences
+                pref_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO user_preferences (id, user_id, favorite_folders, favorite_files, starting_folder, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        pref_id,
+                        current_user.id,
+                        json.dumps(data.get('favorite_folders', [])),
+                        json.dumps(data.get('favorite_files', [])),
+                        data.get('starting_folder'),
+                        now
+                    )
+                )
+
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    @bp.route('/preferences/toggle_folder_favorite', methods=['POST'])
+    @login_required
+    def toggle_folder_favorite():
+        """Toggle a folder's favorite status for the current user."""
+        data = request.get_json() if request.is_json else {}
+        folder_key = data.get('folder_key')
+
+        if not folder_key:
+            return jsonify({'error': 'folder_key is required'}), 400
+
+        conn = get_social_db(_db_path)
+        try:
+            import json
+
+            row = conn.execute(
+                "SELECT id, favorite_folders FROM user_preferences WHERE user_id = ?",
+                (current_user.id,)
+            ).fetchone()
+
+            now = time.time()
+
+            if row:
+                favorites = json.loads(row['favorite_folders'] or '[]')
+                if folder_key in favorites:
+                    favorites.remove(folder_key)
+                    is_favorite = False
+                else:
+                    favorites.append(folder_key)
+                    is_favorite = True
+
+                conn.execute(
+                    "UPDATE user_preferences SET favorite_folders = ?, updated_at = ? WHERE user_id = ?",
+                    (json.dumps(favorites), now, current_user.id)
+                )
+            else:
+                # Create new preferences with this folder as favorite
+                pref_id = str(uuid.uuid4())
+                favorites = [folder_key]
+                is_favorite = True
+                conn.execute(
+                    "INSERT INTO user_preferences (id, user_id, favorite_folders, updated_at) VALUES (?, ?, ?, ?)",
+                    (pref_id, current_user.id, json.dumps(favorites), now)
+                )
+
+            conn.commit()
+            return jsonify({'success': True, 'is_favorite': is_favorite, 'favorites': favorites})
+        finally:
+            conn.close()
+
+    @bp.route('/preferences/toggle_file_favorite', methods=['POST'])
+    @login_required
+    def toggle_file_favorite():
+        """Toggle a file's favorite status for the current user."""
+        data = request.get_json() if request.is_json else {}
+        file_id = data.get('file_id')
+
+        if not file_id:
+            return jsonify({'error': 'file_id is required'}), 400
+
+        conn = get_social_db(_db_path)
+        try:
+            import json
+
+            row = conn.execute(
+                "SELECT id, favorite_files FROM user_preferences WHERE user_id = ?",
+                (current_user.id,)
+            ).fetchone()
+
+            now = time.time()
+
+            if row:
+                favorites = json.loads(row['favorite_files'] or '[]')
+                if file_id in favorites:
+                    favorites.remove(file_id)
+                    is_favorite = False
+                else:
+                    favorites.append(file_id)
+                    is_favorite = True
+
+                conn.execute(
+                    "UPDATE user_preferences SET favorite_files = ?, updated_at = ? WHERE user_id = ?",
+                    (json.dumps(favorites), now, current_user.id)
+                )
+            else:
+                # Create new preferences with this file as favorite
+                pref_id = str(uuid.uuid4())
+                favorites = [file_id]
+                is_favorite = True
+                conn.execute(
+                    "INSERT INTO user_preferences (id, user_id, favorite_files, updated_at) VALUES (?, ?, ?, ?)",
+                    (pref_id, current_user.id, json.dumps(favorites), now)
+                )
+
+            conn.commit()
+            return jsonify({'success': True, 'is_favorite': is_favorite, 'favorites': favorites})
+        finally:
+            conn.close()
+
+    @bp.route('/preferences/starting_folder', methods=['POST'])
+    @login_required
+    def set_starting_folder():
+        """Set the starting folder for the current user."""
+        data = request.get_json() if request.is_json else {}
+        folder_key = data.get('folder_key')  # Can be None to clear
+
+        conn = get_social_db(_db_path)
+        try:
+            now = time.time()
+
+            existing = conn.execute(
+                "SELECT id FROM user_preferences WHERE user_id = ?",
+                (current_user.id,)
+            ).fetchone()
+
+            if existing:
+                conn.execute(
+                    "UPDATE user_preferences SET starting_folder = ?, updated_at = ? WHERE user_id = ?",
+                    (folder_key, now, current_user.id)
+                )
+            else:
+                pref_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO user_preferences (id, user_id, starting_folder, updated_at) VALUES (?, ?, ?, ?)",
+                    (pref_id, current_user.id, folder_key, now)
+                )
+
+            conn.commit()
+            return jsonify({'success': True, 'starting_folder': folder_key})
+        finally:
+            conn.close()
+
 
 def _determine_status(action, current_status):
     """Determine new post status based on action."""

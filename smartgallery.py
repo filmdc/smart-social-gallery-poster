@@ -1332,17 +1332,112 @@ def upload_files():
     if folder_key not in folders: return jsonify({'status': 'error', 'message': 'Destination folder not found.'}), 404
     destination_path = folders[folder_key]['path']
     if 'files' not in request.files: return jsonify({'status': 'error', 'message': 'No files were uploaded.'}), 400
-    uploaded_files, errors, success_count = request.files.getlist('files'), {}, 0
-    for file in uploaded_files:
-        if file and file.filename:
-            filename = secure_filename(file.filename)
+
+    uploaded_files = request.files.getlist('files')
+    relative_paths = request.form.getlist('relativePaths')  # For folder uploads
+    errors, success_count = {}, 0
+    created_folders = set()
+
+    for idx, file in enumerate(uploaded_files):
+        if not file or not file.filename:
+            continue
+
+        original_filename = file.filename
+
+        # Check if this is a ZIP file that should be extracted
+        if original_filename.lower().endswith('.zip'):
             try:
-                file.save(os.path.join(destination_path, filename))
-                success_count += 1
-            except Exception as e: errors[filename] = str(e)
-    if success_count > 0: sync_folder_on_demand(destination_path)
-    if errors: return jsonify({'status': 'partial_success', 'message': f'Successfully uploaded {success_count} files. The following files failed: {", ".join(errors.keys())}'}), 207
-    return jsonify({'status': 'success', 'message': f'Successfully uploaded {success_count} files.'})
+                zip_name = os.path.splitext(secure_filename(original_filename))[0]
+                extract_dir = os.path.join(destination_path, zip_name)
+
+                # Create unique folder name if it already exists
+                base_extract_dir = extract_dir
+                counter = 1
+                while os.path.exists(extract_dir):
+                    extract_dir = f"{base_extract_dir}_{counter}"
+                    counter += 1
+
+                os.makedirs(extract_dir, exist_ok=True)
+                created_folders.add(extract_dir)
+
+                # Extract ZIP contents
+                with zipfile.ZipFile(io.BytesIO(file.read())) as zf:
+                    for zip_info in zf.infolist():
+                        if zip_info.is_dir():
+                            continue
+                        # Sanitize and extract file
+                        extracted_name = os.path.basename(zip_info.filename)
+                        if not extracted_name:
+                            continue
+                        # Preserve folder structure within the ZIP
+                        zip_dir = os.path.dirname(zip_info.filename)
+                        if zip_dir:
+                            target_dir = os.path.join(extract_dir, *[secure_filename(p) for p in zip_dir.split('/')])
+                            os.makedirs(target_dir, exist_ok=True)
+                            created_folders.add(target_dir)
+                        else:
+                            target_dir = extract_dir
+
+                        safe_name = secure_filename(extracted_name)
+                        if safe_name:
+                            target_path = os.path.join(target_dir, safe_name)
+                            with zf.open(zip_info.filename) as src, open(target_path, 'wb') as dst:
+                                dst.write(src.read())
+                            success_count += 1
+
+            except Exception as e:
+                errors[original_filename] = f"ZIP extraction error: {str(e)}"
+            continue
+
+        # Handle folder uploads with relative paths
+        if relative_paths and idx < len(relative_paths) and relative_paths[idx]:
+            rel_path = relative_paths[idx]
+            # Get the folder structure from the relative path
+            path_parts = rel_path.split('/')
+            if len(path_parts) > 1:
+                # Create the folder structure
+                folder_parts = path_parts[:-1]
+                target_dir = destination_path
+                for part in folder_parts:
+                    safe_part = secure_filename(part)
+                    if safe_part:
+                        target_dir = os.path.join(target_dir, safe_part)
+                os.makedirs(target_dir, exist_ok=True)
+                created_folders.add(target_dir)
+                filename = secure_filename(path_parts[-1])
+            else:
+                target_dir = destination_path
+                filename = secure_filename(original_filename)
+        else:
+            target_dir = destination_path
+            filename = secure_filename(original_filename)
+
+        if not filename:
+            continue
+
+        try:
+            file.save(os.path.join(target_dir, filename))
+            success_count += 1
+        except Exception as e:
+            errors[original_filename] = str(e)
+
+    # Sync all affected folders
+    if success_count > 0:
+        sync_folder_on_demand(destination_path)
+        for folder in created_folders:
+            sync_folder_on_demand(folder)
+
+    if errors:
+        return jsonify({
+            'status': 'partial_success',
+            'message': f'Successfully uploaded {success_count} files. Errors: {", ".join(errors.keys())}',
+            'created_folders': list(created_folders)
+        }), 207
+    return jsonify({
+        'status': 'success',
+        'message': f'Successfully uploaded {success_count} files.',
+        'created_folders': list(created_folders)
+    })
                            
 @app.route('/galleryout/rescan_folder', methods=['POST'])
 def rescan_folder():
@@ -1554,6 +1649,68 @@ def delete_folder(folder_key):
         get_dynamic_folder_config(force_refresh=True)
         return jsonify({'status': 'success', 'message': 'Folder deleted.'})
     except Exception as e: return jsonify({'status': 'error', 'message': f'Error: {e}'}), 500
+
+@app.route('/galleryout/move_folder/<string:folder_key>', methods=['POST'])
+def move_folder(folder_key):
+    """Move a folder to a different parent folder."""
+    if folder_key in PROTECTED_FOLDER_KEYS:
+        return jsonify({'status': 'error', 'message': 'This folder cannot be moved.'}), 403
+
+    data = request.json or {}
+    dest_key = data.get('destination_folder')
+
+    folders = get_dynamic_folder_config()
+    if folder_key not in folders:
+        return jsonify({'status': 'error', 'message': 'Folder not found.'}), 404
+    if not dest_key or dest_key not in folders:
+        return jsonify({'status': 'error', 'message': 'Invalid destination folder.'}), 400
+
+    source_path = folders[folder_key]['path']
+    dest_parent_path = folders[dest_key]['path']
+    folder_name = os.path.basename(source_path)
+    new_path = os.path.join(dest_parent_path, folder_name)
+
+    # Prevent moving folder into itself or its children
+    if new_path.startswith(source_path + os.sep) or new_path == source_path:
+        return jsonify({'status': 'error', 'message': 'Cannot move folder into itself.'}), 400
+
+    # Check if a folder with the same name exists in destination
+    if os.path.exists(new_path):
+        # Try to create a unique name
+        base_path = new_path
+        counter = 1
+        while os.path.exists(new_path):
+            new_path = f"{base_path}_{counter}"
+            counter += 1
+        folder_name = os.path.basename(new_path)
+
+    try:
+        with get_db_connection() as conn:
+            # Update all file paths in the database
+            old_path_like = source_path + os.sep + '%'
+            files_to_update = conn.execute("SELECT id, path FROM files WHERE path LIKE ?", (old_path_like,)).fetchall()
+            update_data = []
+            for row in files_to_update:
+                new_file_path = row['path'].replace(source_path, new_path, 1)
+                new_id = hashlib.md5(new_file_path.encode()).hexdigest()
+                update_data.append((new_id, new_file_path, row['id']))
+
+            # Move the folder on disk
+            shutil.move(source_path, new_path)
+
+            # Update database records
+            if update_data:
+                conn.executemany("UPDATE files SET id = ?, path = ? WHERE id = ?", update_data)
+            conn.commit()
+
+        get_dynamic_folder_config(force_refresh=True)
+        return jsonify({
+            'status': 'success',
+            'message': f'Folder moved successfully.',
+            'new_name': folder_name
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Error moving folder: {e}'}), 500
 
 @app.route('/galleryout/load_more')
 def load_more():
