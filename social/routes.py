@@ -27,6 +27,22 @@ from social.scheduler import publish_post_now
 _db_path = None
 
 
+def _get_external_url(endpoint, **kwargs):
+    """
+    Generate an external URL that uses HTTPS when behind a reverse proxy.
+
+    Railway, Heroku, and similar platforms terminate SSL at the proxy level,
+    so Flask sees HTTP internally. This function detects the X-Forwarded-Proto
+    header and ensures the generated URL uses HTTPS when appropriate.
+    """
+    url = url_for(endpoint, _external=True, **kwargs)
+    # Check if we're behind a proxy that's handling HTTPS
+    forwarded_proto = request.headers.get('X-Forwarded-Proto', '')
+    if forwarded_proto == 'https' and url.startswith('http://'):
+        url = 'https://' + url[7:]
+    return url
+
+
 def register_routes(bp, db_path):
     """Register all social routes on the given Blueprint."""
     global _db_path
@@ -464,7 +480,7 @@ def register_routes(bp, db_path):
             if not facebook_available():
                 flash('Facebook credentials not configured.', 'error')
                 return redirect(url_for('social.settings'))
-            redirect_uri = url_for('social.oauth_callback', platform='facebook', _external=True)
+            redirect_uri = _get_external_url('social.oauth_callback', platform='facebook')
             return redirect(get_facebook_authorize_url(redirect_uri))
 
         elif platform == 'linkedin':
@@ -473,7 +489,7 @@ def register_routes(bp, db_path):
                 return redirect(url_for('social.settings'))
             state = str(uuid.uuid4())
             session['oauth_state'] = state
-            redirect_uri = url_for('social.oauth_callback', platform='linkedin', _external=True)
+            redirect_uri = _get_external_url('social.oauth_callback', platform='linkedin')
             return redirect(get_linkedin_authorize_url(redirect_uri, state))
 
         flash(f'Unknown platform: {platform}', 'error')
@@ -495,7 +511,7 @@ def register_routes(bp, db_path):
 
         try:
             if platform == 'facebook':
-                redirect_uri = url_for('social.oauth_callback', platform='facebook', _external=True)
+                redirect_uri = _get_external_url('social.oauth_callback', platform='facebook')
                 accounts = exchange_facebook_code(code, redirect_uri, current_app.secret_key)
                 for account_data in accounts:
                     save_social_account(_db_path, current_user.id, account_data)
@@ -509,7 +525,7 @@ def register_routes(bp, db_path):
                     flash('OAuth state mismatch. Please try again.', 'error')
                     return redirect(url_for('social.settings'))
 
-                redirect_uri = url_for('social.oauth_callback', platform='linkedin', _external=True)
+                redirect_uri = _get_external_url('social.oauth_callback', platform='linkedin')
                 account_data = exchange_linkedin_code(code, redirect_uri, current_app.secret_key)
                 save_social_account(_db_path, current_user.id, account_data)
                 flash('LinkedIn account connected.', 'success')
