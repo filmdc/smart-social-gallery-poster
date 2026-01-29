@@ -66,10 +66,10 @@ import secrets
 # ============================================================================
 
 # Path to the main media/assets folder.
-BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', '/app/data/output')
+BASE_OUTPUT_PATH = os.environ.get('BASE_OUTPUT_PATH', '/app/data')
 
 # Path to source/input media folder (for reference lookups).
-BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', '/app/data/input')
+BASE_INPUT_PATH = os.environ.get('BASE_INPUT_PATH', '/app/data')
 
 # Path for service folders (database, cache, zip files).
 # If not specified, the assets output path will be used.
