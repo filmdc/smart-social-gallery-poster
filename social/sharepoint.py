@@ -314,6 +314,7 @@ def _record_sharepoint_origin(db_path, local_path, sp_file):
 def sync_sharepoint_to_local(cache_dir, db_path=None):
     """
     Sync SharePoint document library files to a local cache directory.
+    DEPRECATED: Use sync_configured_folders() for selective folder sync.
 
     Downloads new/updated files and returns the list of local file paths.
     If a file with the same SharePoint item ID already exists in the database
@@ -379,6 +380,143 @@ def sync_sharepoint_to_local(cache_dir, db_path=None):
         logger.info(f"Skipped {skipped_moved} files already synced and moved")
 
     return synced
+
+
+def sync_folder_to_local(sp_folder_path, local_folder_path, include_subfolders=True, db_path=None):
+    """
+    Sync a specific SharePoint folder to a local directory.
+
+    Args:
+        sp_folder_path: SharePoint folder path within the document library
+        local_folder_path: Local directory to sync files into
+        include_subfolders: Whether to include subfolders
+        db_path: Optional database path for recording sync metadata
+
+    Returns:
+        Tuple of (synced_count, list of local file paths)
+    """
+    if not sharepoint_available():
+        return 0, []
+
+    os.makedirs(local_folder_path, exist_ok=True)
+    sp_files = list_sharepoint_files(folder_path=sp_folder_path, recursive=include_subfolders)
+    synced = []
+    skipped_moved = 0
+
+    for sp_file in sp_files:
+        # Check if this SharePoint file already exists in the database (possibly moved)
+        exists, existing_path = _file_exists_by_sp_item_id(db_path, sp_file['sp_item_id'])
+        if exists:
+            if existing_path and os.path.exists(existing_path):
+                synced.append(existing_path)
+                skipped_moved += 1
+                continue
+
+        # Build local path - remove the sp_folder_path prefix to get relative path
+        sp_relative_path = sp_file['path']
+        if sp_folder_path and sp_relative_path.startswith(sp_folder_path + '/'):
+            sp_relative_path = sp_relative_path[len(sp_folder_path) + 1:]
+        elif sp_folder_path and sp_relative_path == sp_folder_path:
+            sp_relative_path = os.path.basename(sp_file['path'])
+
+        local_path = os.path.join(local_folder_path, sp_relative_path.replace('/', os.sep))
+        local_dir = os.path.dirname(local_path)
+
+        # Check if file needs updating
+        needs_download = True
+        if os.path.exists(local_path):
+            local_size = os.path.getsize(local_path)
+            if local_size == sp_file['size']:
+                needs_download = False
+
+        if needs_download:
+            os.makedirs(local_dir, exist_ok=True)
+            success = download_sharepoint_file(
+                sp_file['drive_id'],
+                sp_file['sp_item_id'],
+                local_path
+            )
+            if success:
+                synced.append(local_path)
+                _pending_origin_records[local_path] = sp_file
+                logger.info(f"Synced: {sp_file['name']} -> {local_path}")
+        else:
+            synced.append(local_path)
+            _pending_origin_records[local_path] = sp_file
+
+    if skipped_moved > 0:
+        logger.info(f"Skipped {skipped_moved} files already synced and moved")
+
+    return len(synced), synced
+
+
+def sync_configured_folders(base_output_path, social_db_path, gallery_db_path=None):
+    """
+    Sync all configured SharePoint folders to the main gallery.
+
+    Args:
+        base_output_path: The base gallery output path (files sync directly here)
+        social_db_path: Path to social database with sync configurations
+        gallery_db_path: Path to gallery database for file origin tracking
+
+    Returns:
+        Dict with sync results per folder
+    """
+    import sqlite3
+    import time
+
+    if not sharepoint_available():
+        return {'error': 'SharePoint not configured'}
+
+    try:
+        conn = sqlite3.connect(social_db_path)
+        conn.row_factory = sqlite3.Row
+        folders = conn.execute(
+            "SELECT * FROM sharepoint_sync_folders WHERE is_enabled = 1"
+        ).fetchall()
+    except Exception as e:
+        logger.error(f"Error reading sync configurations: {e}")
+        return {'error': str(e)}
+
+    results = {}
+    for folder in folders:
+        folder_id = folder['id']
+        sp_path = folder['sp_folder_path']
+        local_name = folder['local_folder_name']
+        include_subs = bool(folder['include_subfolders'])
+
+        # Sync to a folder directly in the main gallery
+        local_folder = os.path.join(base_output_path, local_name)
+
+        try:
+            count, files = sync_folder_to_local(
+                sp_folder_path=sp_path,
+                local_folder_path=local_folder,
+                include_subfolders=include_subs,
+                db_path=gallery_db_path
+            )
+
+            # Update last sync time
+            conn.execute(
+                "UPDATE sharepoint_sync_folders SET last_sync_at = ?, last_sync_count = ? WHERE id = ?",
+                (time.time(), count, folder_id)
+            )
+            conn.commit()
+
+            results[local_name] = {'synced': count, 'success': True}
+            logger.info(f"Synced {count} files from '{sp_path}' to '{local_name}'")
+
+        except Exception as e:
+            logger.error(f"Error syncing folder '{sp_path}': {e}")
+            results[local_name] = {'synced': 0, 'success': False, 'error': str(e)}
+
+    conn.close()
+
+    # Apply pending origin records
+    if gallery_db_path:
+        apply_pending_origin_records(gallery_db_path)
+
+    return results
 
 
 # Pending origin records to be applied after database scan
@@ -449,13 +587,14 @@ def _list_subfolders(drive_id, folder_path, folders_list, token):
             _list_subfolders(drive_id, child_path, folders_list, token)
 
 
-def start_background_sync(cache_dir, interval=None, db_path=None):
-    """Start a background thread that periodically syncs SharePoint files.
+def start_background_sync(base_output_path, interval=None, gallery_db_path=None, social_db_path=None):
+    """Start a background thread that periodically syncs configured SharePoint folders.
 
     Args:
-        cache_dir: Local directory for cached SharePoint files
+        base_output_path: Base gallery output path for synced files
         interval: Sync interval in seconds (default: SHAREPOINT_SYNC_INTERVAL)
-        db_path: Database path for tracking file origins
+        gallery_db_path: Database path for tracking file origins
+        social_db_path: Database path for sync configurations
     """
     global _sync_thread
     if not sharepoint_available():
@@ -470,10 +609,15 @@ def start_background_sync(cache_dir, interval=None, db_path=None):
     def sync_loop():
         while not _stop_event.is_set():
             try:
-                sync_sharepoint_to_local(cache_dir, db_path=db_path)
-                # Apply pending origin records after sync
-                if db_path:
-                    apply_pending_origin_records(db_path)
+                if social_db_path:
+                    # Use new selective folder sync
+                    sync_configured_folders(base_output_path, social_db_path, gallery_db_path)
+                else:
+                    # Fallback to legacy cache-based sync
+                    cache_dir = os.path.join(base_output_path, '.sharepoint_cache')
+                    sync_sharepoint_to_local(cache_dir, db_path=gallery_db_path)
+                    if gallery_db_path:
+                        apply_pending_origin_records(gallery_db_path)
             except Exception as e:
                 logger.error(f"SharePoint sync error: {e}")
             _stop_event.wait(sync_interval)

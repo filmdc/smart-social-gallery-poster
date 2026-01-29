@@ -1294,12 +1294,13 @@ def initialize_gallery():
     try:
         from social.sharepoint import sharepoint_available, start_background_sync
         if sharepoint_available():
-            sp_cache_dir = os.environ.get(
-                'SHAREPOINT_LOCAL_CACHE_DIR',
-                os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
+            # Use new selective folder sync (syncs directly to BASE_OUTPUT_PATH)
+            start_background_sync(
+                base_output_path=BASE_OUTPUT_PATH,
+                gallery_db_path=DATABASE_FILE,
+                social_db_path=DATABASE_FILE if SOCIAL_FEATURES_ENABLED else None
             )
-            start_background_sync(sp_cache_dir, db_path=DATABASE_FILE)
-            print(f"{Colors.GREEN}INFO: SharePoint integration enabled (cache: {sp_cache_dir}).{Colors.RESET}")
+            print(f"{Colors.GREEN}INFO: SharePoint integration enabled (syncs to gallery folders).{Colors.RESET}")
         else:
             print(f"INFO: SharePoint not configured (set SHAREPOINT_* env vars to enable).")
     except ImportError:
@@ -1357,14 +1358,34 @@ def gallery_redirect_base():
 def api_get_folders():
     """API endpoint to get all folders for the file browser."""
     folders = get_dynamic_folder_config()
+
+    # Get folders that actually contain files (not just subfolders)
+    folders_with_files = set()
+    with get_db_connection() as conn:
+        file_paths = conn.execute('SELECT DISTINCT path FROM files').fetchall()
+        for row in file_paths:
+            parent_dir = os.path.dirname(row['path'])
+            folders_with_files.add(os.path.normpath(parent_dir))
+
     folder_list = []
     for key, info in folders.items():
+        folder_path_norm = os.path.normpath(info['path'])
+        # Only include folders that have files directly in them
+        if folder_path_norm not in folders_with_files:
+            continue
+
+        # Use relative path for display to distinguish folders with same name
+        display_name = info.get('relative_path', info['display_name'])
+        if not display_name or display_name == '':
+            display_name = info['display_name']
+
         folder_list.append({
             'key': key,
-            'name': info['display_name'],
+            'name': display_name,
             'path': info['path'],
             'parent': info.get('parent')
         })
+
     # Sort by name
     folder_list.sort(key=lambda x: x['name'].lower())
     return jsonify(folder_list)
@@ -1470,6 +1491,18 @@ def gallery_view(folder_key):
         curr_key = folder_info.get('parent')
     breadcrumbs.reverse()
 
+    # Get SharePoint sync folder names to mark in the UI
+    sharepoint_folders = set()
+    if SOCIAL_FEATURES_ENABLED:
+        try:
+            with get_db_connection() as conn:
+                sp_rows = conn.execute(
+                    "SELECT local_folder_name FROM sharepoint_sync_folders WHERE is_enabled = 1"
+                ).fetchall()
+                sharepoint_folders = {row['local_folder_name'] for row in sp_rows}
+        except Exception:
+            pass  # Table might not exist yet
+
     return render_template('index.html',
                            files=initial_files,
                            total_files=len(gallery_view_cache),
@@ -1485,7 +1518,8 @@ def gallery_view(folder_key):
                            selected_prefixes=request.args.getlist('prefix'),
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
                            protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
-                           social_enabled=SOCIAL_FEATURES_ENABLED)
+                           social_enabled=SOCIAL_FEATURES_ENABLED,
+                           sharepoint_folders=list(sharepoint_folders))
 
 @app.route('/galleryout/upload', methods=['POST'])
 def upload_files():
