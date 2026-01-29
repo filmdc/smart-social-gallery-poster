@@ -827,6 +827,17 @@
             border-color: var(--favorite-color);
         }
 
+        .social-post-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border-color: #764ba2 !important;
+            color: white !important;
+        }
+
+        .social-post-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
         .duration-overlay {
             position: absolute;
             bottom: 8px;
@@ -902,6 +913,27 @@
             margin-right: auto;
             padding-left: 1rem;
             color: var(--primary-color);
+        }
+
+        #platform-warnings {
+            display: none;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-right: 1rem;
+        }
+
+        #platform-warnings.visible {
+            display: flex;
+        }
+
+        .platform-warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid var(--warning-color);
+            color: var(--warning-color);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
         }
 
         #drag-drop-overlay {
@@ -2357,6 +2389,7 @@
     </div>
     <div id="selection-bar">
         <span id="selection-counter">0 files selected</span>
+        <div id="platform-warnings"></div>
         <div class="actions-grid"><button id="move-selected-btn">📁 Move</button><button id="favorite-selected-btn">⭐
                 Add</button><button id="unfavorite-selected-btn">☆ Remove</button><button id="download-zip-btn">📦
                 Zip</button><button id="compare-btn" style="display:none;">🔍 Compare</button>{% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}<button id="social-post-btn" onclick="postSelectedToSocial()" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-color:#764ba2;">📤 Post</button>{% endif %}<button id="delete-selected-btn" class="delete-btn">🗑️ Delete</button><button
@@ -2594,6 +2627,13 @@
         let totalFolderFiles = {{ total_folder_files }};
         const currentFolderKey = '{{ current_folder_key }}';
         const ancestorKeys = {{ ancestor_keys | tojson }};
+        const socialEnabled = {% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}true{% else %}false{% endif %};
+        // Platform limits for social media
+        const PLATFORM_LIMITS = {
+            instagram: { maxImages: 10, maxVideos: 1, name: 'Instagram' },
+            facebook: { maxImages: 10, maxVideos: 1, name: 'Facebook' },
+            linkedin: { maxImages: 20, maxVideos: 1, name: 'LinkedIn' }
+        };
 
         const galleryContainer = document.getElementById('gallery-container');
         const selectionBar = document.getElementById('selection-bar');
@@ -2807,6 +2847,7 @@
                 mediaHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;color:var(--text-muted);">📄</div>`;
             }
             const summaryButtonHTML = file.has_workflow ? `<button title="Node Summary" onclick="showNodeSummary(event, '${file.id}')">📝</button>` : '';
+            const socialPostBtnHTML = socialEnabled ? `<button class="social-post-btn" title="Post to Social" onclick="quickPost(event, '${file.id}')" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">📤</button>` : '';
             let metadataHTML = '';
             if (file.dimensions || file.mtime || file.size) {
                 const date = new Date(file.mtime * 1000);
@@ -2824,7 +2865,7 @@
                 scannedHTML = `<div class="file-scanned-time" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; opacity: 0.8;">🔍 Scanned: ${formattedScannedDate}</div>`;
             }
 
-            item.innerHTML = `<div class="selection-checkmark" onclick="toggleSelection(event, '${file.id}', this.closest('.gallery-item'))">✓</div><div class="thumbnail-link" onclick="openLightbox(event, '${file.id}'); event.stopPropagation();" draggable="false"><div class="thumbnail-wrapper">${mediaHTML}${file.has_workflow ? `<a href="/galleryout/workflow/${file.id}" class="workflow-badge" onclick="event.stopPropagation()">⚙️ Workflow</a>` : ''}${file.duration ? `<span class="duration-overlay">⏱️ ${file.duration}</span>` : ''}</div></div><div class="item-info"><div><p title="${file.name}"><strong>${file.name}</strong></p>${metadataHTML}${scannedHTML}</div><div class="item-actions">${summaryButtonHTML}<button class="favorite-btn ${file.is_favorite ? 'favorited' : ''}" title="Favorite" onclick="toggleFavorite(event, '${file.id}', this)">${file.is_favorite ? '⭐' : '☆'}</button><a href="/galleryout/download/${file.id}" onclick="event.stopPropagation()" title="Download">💾</a><button class="delete-btn" onclick="deleteFile(event, '${file.id}', this)">🗑️</button></div></div>`;
+            item.innerHTML = `<div class="selection-checkmark" onclick="toggleSelection(event, '${file.id}', this.closest('.gallery-item'))">✓</div><div class="thumbnail-link" onclick="openLightbox(event, '${file.id}'); event.stopPropagation();" draggable="false"><div class="thumbnail-wrapper">${mediaHTML}${file.has_workflow ? `<a href="/galleryout/workflow/${file.id}" class="workflow-badge" onclick="event.stopPropagation()">⚙️ Workflow</a>` : ''}${file.duration ? `<span class="duration-overlay">⏱️ ${file.duration}</span>` : ''}</div></div><div class="item-info"><div><p title="${file.name}"><strong>${file.name}</strong></p>${metadataHTML}${scannedHTML}</div><div class="item-actions">${summaryButtonHTML}${socialPostBtnHTML}<button class="favorite-btn ${file.is_favorite ? 'favorited' : ''}" title="Favorite" onclick="toggleFavorite(event, '${file.id}', this)">${file.is_favorite ? '⭐' : '☆'}</button><a href="/galleryout/download/${file.id}" onclick="event.stopPropagation()" title="Download">💾</a><button class="delete-btn" onclick="deleteFile(event, '${file.id}', this)">🗑️</button></div></div>`;
             return item;
         }
         function updateLoadMoreVisibility() { const loadMoreContainer = document.getElementById('load-more-container'); if (!loadMoreContainer) return; const shouldHide = currentItemCount >= totalFiles || totalFiles === 0; loadMoreContainer.style.display = shouldHide ? 'none' : 'block'; }
@@ -2906,6 +2947,22 @@
             } else {
                 rangeBtn.style.display = 'none';
             }
+
+            // Platform warnings for social posting
+            const warningsContainer = document.getElementById('platform-warnings');
+            if (warningsContainer && socialEnabled && count > 0) {
+                const warnings = getPlatformWarnings();
+                if (warnings.length > 0) {
+                    warningsContainer.innerHTML = warnings.map(w => `<span class="platform-warning">⚠️ ${w}</span>`).join('');
+                    warningsContainer.classList.add('visible');
+                } else {
+                    warningsContainer.innerHTML = '';
+                    warningsContainer.classList.remove('visible');
+                }
+            } else if (warningsContainer) {
+                warningsContainer.innerHTML = '';
+                warningsContainer.classList.remove('visible');
+            }
         }
         function selectRange(index1, index2) {
             const start = Math.min(index1, index2);
@@ -2929,6 +2986,38 @@
             if (selectedFiles.size === 0) { showNotification('Select at least one file first.', 'warning'); return; }
             const fileIds = [...selectedFiles].join(',');
             window.location.href = '/galleryout/social/compose?file_ids=' + encodeURIComponent(fileIds);
+        }
+        function quickPost(event, fileId) {
+            event.stopPropagation();
+            window.location.href = '/galleryout/social/compose?file_ids=' + encodeURIComponent(fileId) + '&quick=1';
+        }
+        function getPlatformWarnings() {
+            const count = selectedFiles.size;
+            const warnings = [];
+            // Count images vs videos
+            let imageCount = 0, videoCount = 0;
+            selectedFiles.forEach(fileId => {
+                const item = document.querySelector(`.gallery-item[data-file-id="${fileId}"]`);
+                if (item) {
+                    const type = item.dataset.fileType;
+                    if (type === 'video') videoCount++;
+                    else imageCount++;
+                }
+            });
+            // Check platform limits
+            if (videoCount > 1) {
+                warnings.push('Most platforms only support 1 video per post');
+            }
+            if (count > PLATFORM_LIMITS.instagram.maxImages) {
+                warnings.push(`Instagram limit: ${PLATFORM_LIMITS.instagram.maxImages} items`);
+            }
+            if (count > PLATFORM_LIMITS.linkedin.maxImages) {
+                warnings.push(`LinkedIn limit: ${PLATFORM_LIMITS.linkedin.maxImages} images`);
+            }
+            if (imageCount > 0 && videoCount > 0) {
+                warnings.push('Mixing images and video may not work on all platforms');
+            }
+            return warnings;
         }
         function downloadSelectedZip() {
             if (selectedFiles.size === 0) return;

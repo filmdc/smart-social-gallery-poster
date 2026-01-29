@@ -1352,6 +1352,60 @@ def require_authentication():
 def gallery_redirect_base():
     return redirect(url_for('gallery_view', folder_key='_root_'))
 
+
+@app.route('/galleryout/api/folders')
+def api_get_folders():
+    """API endpoint to get all folders for the file browser."""
+    folders = get_dynamic_folder_config()
+    folder_list = []
+    for key, info in folders.items():
+        folder_list.append({
+            'key': key,
+            'name': info['display_name'],
+            'path': info['path'],
+            'parent': info.get('parent')
+        })
+    # Sort by name
+    folder_list.sort(key=lambda x: x['name'].lower())
+    return jsonify(folder_list)
+
+
+@app.route('/galleryout/api/files/<string:folder_key>')
+def api_get_files(folder_key):
+    """API endpoint to get files in a folder for the file browser."""
+    folders = get_dynamic_folder_config()
+    if folder_key not in folders:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    folder_path = folders[folder_key]['path']
+
+    with get_db_connection() as conn:
+        query = """
+            SELECT id, name, type, path, dimensions, size, mtime, is_favorite
+            FROM files
+            WHERE path LIKE ?
+            ORDER BY mtime DESC
+        """
+        all_files_raw = conn.execute(query, (folder_path + os.sep + '%',)).fetchall()
+
+    # Filter to only files directly in this folder
+    folder_path_norm = os.path.normpath(folder_path)
+    files = []
+    for row in all_files_raw:
+        if os.path.normpath(os.path.dirname(row['path'])) == folder_path_norm:
+            files.append({
+                'id': row['id'],
+                'name': row['name'],
+                'type': row['type'],
+                'dimensions': row['dimensions'],
+                'size': row['size'],
+                'mtime': row['mtime'],
+                'is_favorite': bool(row['is_favorite'])
+            })
+
+    return jsonify({'files': files, 'count': len(files)})
+
+
 @app.route('/galleryout/sync_status/<string:folder_key>')
 def sync_status(folder_key):
     folders = get_dynamic_folder_config()
