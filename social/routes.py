@@ -14,7 +14,13 @@ from flask import (render_template, request, redirect, url_for, jsonify,
                    flash, session, current_app)
 from flask_login import login_user, logout_user, login_required, current_user
 
-from social.auth import User, admin_required, approver_required, has_users
+from social.auth import (
+    User, admin_required, approver_required, has_users,
+    create_registration_request, get_pending_registration_requests,
+    get_registration_request, approve_registration_request,
+    deny_registration_request, create_password_reset_token,
+    validate_password_reset_token, use_password_reset_token
+)
 from social.models import get_social_db
 from social.oauth import (
     facebook_available, linkedin_available,
@@ -60,6 +66,7 @@ def register_routes(bp, db_path):
 
         if request.method == 'POST':
             username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '').strip()
             confirm = request.form.get('confirm_password', '').strip()
             display_name = request.form.get('display_name', '').strip() or username
@@ -67,6 +74,8 @@ def register_routes(bp, db_path):
             errors = []
             if not username or len(username) < 3:
                 errors.append('Username must be at least 3 characters.')
+            if not email or '@' not in email:
+                errors.append('Please enter a valid email address.')
             if not password or len(password) < 8:
                 errors.append('Password must be at least 8 characters.')
             if password != confirm:
@@ -75,9 +84,9 @@ def register_routes(bp, db_path):
             if errors:
                 return render_template('social/login.html', setup_mode=True,
                                        errors=errors, username=username,
-                                       display_name=display_name)
+                                       email=email, display_name=display_name)
 
-            user = User.create(username, password, display_name, 'admin', _db_path)
+            user = User.create(username, password, display_name, 'admin', _db_path, email=email)
             login_user(user)
             user.update_last_login(_db_path)
             flash('Admin account created successfully.', 'success')
@@ -95,10 +104,14 @@ def register_routes(bp, db_path):
             return redirect(url_for('social.dashboard'))
 
         if request.method == 'POST':
-            username = request.form.get('username', '').strip()
+            username_or_email = request.form.get('username', '').strip()
             password = request.form.get('password', '')
 
-            user = User.get_by_username(username, _db_path)
+            # Try to find user by username first, then by email
+            user = User.get_by_username(username_or_email, _db_path)
+            if not user:
+                user = User.get_by_email(username_or_email, _db_path)
+
             if user and user.is_active and user.check_password(password):
                 login_user(user)
                 user.update_last_login(_db_path)
@@ -106,8 +119,8 @@ def register_routes(bp, db_path):
                 return redirect(next_page or url_for('social.dashboard'))
 
             return render_template('social/login.html', setup_mode=False,
-                                   errors=['Invalid username or password.'],
-                                   username=username)
+                                   errors=['Invalid username/email or password.'],
+                                   username=username_or_email)
 
         return render_template('social/login.html', setup_mode=False)
 
@@ -116,6 +129,519 @@ def register_routes(bp, db_path):
     def logout():
         logout_user()
         return redirect(url_for('gallery_redirect_base'))
+
+    # =========================================================================
+    # REGISTRATION REQUEST
+    # =========================================================================
+
+    @bp.route('/request-access', methods=['GET', 'POST'])
+    def request_access():
+        """Public page for users to request access."""
+        if not has_users(_db_path):
+            return redirect(url_for('social.setup'))
+
+        if current_user.is_authenticated:
+            return redirect(url_for('social.dashboard'))
+
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip().lower()
+            display_name = request.form.get('display_name', '').strip()
+            password = request.form.get('password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+            reason = request.form.get('reason', '').strip()
+
+            errors = []
+            if not email or '@' not in email:
+                errors.append('Please enter a valid email address.')
+            if not display_name or len(display_name) < 2:
+                errors.append('Display name must be at least 2 characters.')
+            if not password or len(password) < 8:
+                errors.append('Password must be at least 8 characters.')
+            if password != confirm_password:
+                errors.append('Passwords do not match.')
+
+            if errors:
+                return render_template('social/request_access.html',
+                                       errors=errors,
+                                       email=email,
+                                       display_name=display_name,
+                                       reason=reason)
+
+            request_id, error = create_registration_request(
+                email, display_name, password, reason, _db_path
+            )
+
+            if error:
+                return render_template('social/request_access.html',
+                                       errors=[error],
+                                       email=email,
+                                       display_name=display_name,
+                                       reason=reason)
+
+            # Send notification to admins
+            try:
+                from social.email import (
+                    email_configured, send_registration_request_notification
+                )
+                if email_configured():
+                    admins = User.get_admins(_db_path)
+                    admin_emails = [a.email for a in admins if a.email]
+                    if admin_emails:
+                        send_registration_request_notification(
+                            admin_emails, display_name, email, reason
+                        )
+            except Exception as e:
+                # Log but don't fail the request
+                print(f"Warning: Could not send admin notification email: {e}")
+
+            flash('Your access request has been submitted. You will receive an email when it is reviewed.', 'success')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/request_access.html')
+
+    # =========================================================================
+    # PASSWORD RESET
+    # =========================================================================
+
+    @bp.route('/forgot-password', methods=['GET', 'POST'])
+    def forgot_password():
+        """Request password reset."""
+        if not has_users(_db_path):
+            return redirect(url_for('social.setup'))
+
+        if current_user.is_authenticated:
+            return redirect(url_for('social.dashboard'))
+
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip().lower()
+
+            if not email or '@' not in email:
+                return render_template('social/forgot_password.html',
+                                       errors=['Please enter a valid email address.'],
+                                       email=email)
+
+            # Find user by email
+            user = User.get_by_email(email, _db_path)
+
+            # Always show success message to prevent email enumeration
+            if user and user.is_active:
+                token, error = create_password_reset_token(user.id, _db_path)
+                if token and not error:
+                    try:
+                        from social.email import email_configured, send_password_reset
+                        if email_configured():
+                            send_password_reset(user.email, user.display_name, token)
+                    except Exception as e:
+                        print(f"Warning: Could not send password reset email: {e}")
+
+            flash('If an account with that email exists, you will receive a password reset link.', 'info')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/forgot_password.html')
+
+    @bp.route('/reset-password', methods=['GET', 'POST'])
+    def reset_password():
+        """Reset password using token."""
+        token = request.args.get('token', '')
+
+        if not token:
+            flash('Invalid reset link.', 'error')
+            return redirect(url_for('social.login'))
+
+        # Validate token
+        user_id, error = validate_password_reset_token(token, _db_path)
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('social.forgot_password'))
+
+        if request.method == 'POST':
+            password = request.form.get('password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+
+            errors = []
+            if not password or len(password) < 8:
+                errors.append('Password must be at least 8 characters.')
+            if password != confirm_password:
+                errors.append('Passwords do not match.')
+
+            if errors:
+                return render_template('social/reset_password.html',
+                                       errors=errors,
+                                       token=token)
+
+            success, error = use_password_reset_token(token, password, _db_path)
+            if error:
+                flash(error, 'error')
+                return redirect(url_for('social.forgot_password'))
+
+            flash('Your password has been reset. Please log in with your new password.', 'success')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/reset_password.html', token=token)
+
+    # =========================================================================
+    # REGISTRATION REQUEST MANAGEMENT (Admin)
+    # =========================================================================
+
+    @bp.route('/registration-requests')
+    @admin_required
+    def registration_requests():
+        """List pending registration requests."""
+        requests = get_pending_registration_requests(_db_path)
+        return render_template('social/registration_requests.html', requests=requests)
+
+    @bp.route('/registration-requests/<request_id>/approve', methods=['POST'])
+    @admin_required
+    def approve_request(request_id):
+        """Approve a registration request."""
+        role = request.form.get('role', 'employee')
+        if role not in User.VALID_ROLES:
+            role = 'employee'
+
+        req = get_registration_request(request_id, _db_path)
+        if not req:
+            if request.is_json:
+                return jsonify({'error': 'Request not found'}), 404
+            flash('Registration request not found.', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        user, error = approve_registration_request(
+            request_id, current_user.id, role, _db_path
+        )
+
+        if error:
+            if request.is_json:
+                return jsonify({'error': error}), 400
+            flash(f'Error approving request: {error}', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        # Send approval notification
+        try:
+            from social.email import email_configured, send_registration_approved
+            if email_configured():
+                send_registration_approved(user.email, user.display_name)
+        except Exception as e:
+            print(f"Warning: Could not send approval email: {e}")
+
+        if request.is_json:
+            return jsonify({'success': True, 'user_id': user.id})
+
+        flash(f'Registration approved. {user.display_name} can now log in.', 'success')
+        return redirect(url_for('social.registration_requests'))
+
+    @bp.route('/registration-requests/<request_id>/deny', methods=['POST'])
+    @admin_required
+    def deny_request(request_id):
+        """Deny a registration request."""
+        reason = request.form.get('reason', '') if not request.is_json else request.json.get('reason', '')
+
+        req = get_registration_request(request_id, _db_path)
+        if not req:
+            if request.is_json:
+                return jsonify({'error': 'Request not found'}), 404
+            flash('Registration request not found.', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        success, error = deny_registration_request(
+            request_id, current_user.id, reason, _db_path
+        )
+
+        if error:
+            if request.is_json:
+                return jsonify({'error': error}), 400
+            flash(f'Error denying request: {error}', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        # Send denial notification
+        try:
+            from social.email import email_configured, send_registration_denied
+            if email_configured():
+                send_registration_denied(req['email'], req['display_name'], reason)
+        except Exception as e:
+            print(f"Warning: Could not send denial email: {e}")
+
+        if request.is_json:
+            return jsonify({'success': True})
+
+        flash('Registration request denied.', 'info')
+        return redirect(url_for('social.registration_requests'))
+
+    # =========================================================================
+    # PROGRAMS & CAMPAIGNS MANAGEMENT
+    # =========================================================================
+
+    @bp.route('/categories')
+    @login_required
+    def categories():
+        """View and manage programs and campaigns."""
+        # Only admin and marketing_admin can manage categories
+        if not current_user.can_post_without_approval:
+            flash('You do not have permission to manage categories.', 'error')
+            return redirect(url_for('social.dashboard'))
+
+        conn = get_social_db(_db_path)
+        try:
+            programs = conn.execute(
+                "SELECT * FROM programs ORDER BY sort_order, name"
+            ).fetchall()
+            campaigns = conn.execute(
+                "SELECT * FROM campaigns ORDER BY sort_order, name"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        return render_template('social/categories.html',
+                               programs=[dict(p) for p in programs],
+                               campaigns=[dict(c) for c in campaigns])
+
+    @bp.route('/programs', methods=['POST'])
+    @admin_required
+    def create_program():
+        """Create a new program (admin only)."""
+        import uuid
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+
+        if not name:
+            if request.is_json:
+                return jsonify({'error': 'Program name is required'}), 400
+            flash('Program name is required.', 'error')
+            return redirect(url_for('social.categories'))
+
+        conn = get_social_db(_db_path)
+        try:
+            # Check for duplicate
+            existing = conn.execute(
+                "SELECT id FROM programs WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                if request.is_json:
+                    return jsonify({'error': 'A program with this name already exists'}), 400
+                flash('A program with this name already exists.', 'error')
+                return redirect(url_for('social.categories'))
+
+            program_id = str(uuid.uuid4())
+            now = time.time()
+            conn.execute(
+                "INSERT INTO programs (id, name, description, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
+                (program_id, name, description, now, current_user.id)
+            )
+            conn.commit()
+
+            if request.is_json:
+                return jsonify({'success': True, 'id': program_id, 'name': name})
+            flash(f'Program "{name}" created.', 'success')
+        finally:
+            conn.close()
+
+        return redirect(url_for('social.categories'))
+
+    @bp.route('/programs/<program_id>', methods=['PUT', 'DELETE'])
+    @admin_required
+    def manage_program(program_id):
+        """Update or delete a program (admin only)."""
+        conn = get_social_db(_db_path)
+        try:
+            if request.method == 'DELETE':
+                conn.execute("DELETE FROM programs WHERE id = ?", (program_id,))
+                conn.commit()
+                return jsonify({'success': True})
+
+            # PUT - update
+            data = request.json or {}
+            name = data.get('name', '').strip()
+            description = data.get('description', '').strip()
+            is_active = data.get('is_active', True)
+
+            if name:
+                # Check for duplicate name
+                existing = conn.execute(
+                    "SELECT id FROM programs WHERE name = ? AND id != ?", (name, program_id)
+                ).fetchone()
+                if existing:
+                    return jsonify({'error': 'A program with this name already exists'}), 400
+
+                conn.execute(
+                    "UPDATE programs SET name = ?, description = ?, is_active = ? WHERE id = ?",
+                    (name, description, 1 if is_active else 0, program_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE programs SET is_active = ? WHERE id = ?",
+                    (1 if is_active else 0, program_id)
+                )
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    @bp.route('/campaigns', methods=['POST'])
+    @approver_required
+    def create_campaign():
+        """Create a new campaign (marketing_admin or admin)."""
+        import uuid
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+
+        if not name:
+            if request.is_json:
+                return jsonify({'error': 'Campaign name is required'}), 400
+            flash('Campaign name is required.', 'error')
+            return redirect(url_for('social.categories'))
+
+        conn = get_social_db(_db_path)
+        try:
+            # Check for duplicate
+            existing = conn.execute(
+                "SELECT id FROM campaigns WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                if request.is_json:
+                    return jsonify({'error': 'A campaign with this name already exists'}), 400
+                flash('A campaign with this name already exists.', 'error')
+                return redirect(url_for('social.categories'))
+
+            campaign_id = str(uuid.uuid4())
+            now = time.time()
+            conn.execute(
+                "INSERT INTO campaigns (id, name, description, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
+                (campaign_id, name, description, now, current_user.id)
+            )
+            conn.commit()
+
+            if request.is_json:
+                return jsonify({'success': True, 'id': campaign_id, 'name': name})
+            flash(f'Campaign "{name}" created.', 'success')
+        finally:
+            conn.close()
+
+        return redirect(url_for('social.categories'))
+
+    @bp.route('/campaigns/<campaign_id>', methods=['PUT', 'DELETE'])
+    @approver_required
+    def manage_campaign(campaign_id):
+        """Update or delete a campaign (marketing_admin or admin)."""
+        conn = get_social_db(_db_path)
+        try:
+            if request.method == 'DELETE':
+                conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+                conn.commit()
+                return jsonify({'success': True})
+
+            # PUT - update
+            data = request.json or {}
+            name = data.get('name', '').strip()
+            description = data.get('description', '').strip()
+            is_active = data.get('is_active', True)
+
+            if name:
+                # Check for duplicate name
+                existing = conn.execute(
+                    "SELECT id FROM campaigns WHERE name = ? AND id != ?", (name, campaign_id)
+                ).fetchone()
+                if existing:
+                    return jsonify({'error': 'A campaign with this name already exists'}), 400
+
+                conn.execute(
+                    "UPDATE campaigns SET name = ?, description = ?, is_active = ? WHERE id = ?",
+                    (name, description, 1 if is_active else 0, campaign_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE campaigns SET is_active = ? WHERE id = ?",
+                    (1 if is_active else 0, campaign_id)
+                )
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    # =========================================================================
+    # FILE CATEGORY ASSIGNMENT
+    # =========================================================================
+
+    @bp.route('/files/<file_id>/categories', methods=['GET'])
+    @login_required
+    def get_file_categories(file_id):
+        """Get programs and campaigns assigned to a file."""
+        conn = get_social_db(_db_path)
+        try:
+            programs = conn.execute("""
+                SELECT p.id, p.name FROM programs p
+                JOIN file_programs fp ON p.id = fp.program_id
+                WHERE fp.file_id = ?
+            """, (file_id,)).fetchall()
+            campaigns = conn.execute("""
+                SELECT c.id, c.name FROM campaigns c
+                JOIN file_campaigns fc ON c.id = fc.campaign_id
+                WHERE fc.file_id = ?
+            """, (file_id,)).fetchall()
+            return jsonify({
+                'programs': [{'id': p['id'], 'name': p['name']} for p in programs],
+                'campaigns': [{'id': c['id'], 'name': c['name']} for c in campaigns]
+            })
+        finally:
+            conn.close()
+
+    @bp.route('/files/<file_id>/categories', methods=['PUT'])
+    @approver_required
+    def update_file_categories(file_id):
+        """Update programs and campaigns assigned to a file."""
+        import uuid
+        data = request.json or {}
+        program_ids = data.get('programs', [])
+        campaign_ids = data.get('campaigns', [])
+
+        conn = get_social_db(_db_path)
+        try:
+            now = time.time()
+
+            # Update programs - delete old, insert new
+            conn.execute("DELETE FROM file_programs WHERE file_id = ?", (file_id,))
+            for program_id in program_ids:
+                conn.execute(
+                    "INSERT INTO file_programs (id, file_id, program_id, assigned_at, assigned_by) VALUES (?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), file_id, program_id, now, current_user.id)
+                )
+
+            # Update campaigns - delete old, insert new
+            conn.execute("DELETE FROM file_campaigns WHERE file_id = ?", (file_id,))
+            for campaign_id in campaign_ids:
+                conn.execute(
+                    "INSERT INTO file_campaigns (id, file_id, campaign_id, assigned_at, assigned_by) VALUES (?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), file_id, campaign_id, now, current_user.id)
+                )
+
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    @bp.route('/api/programs')
+    @login_required
+    def list_programs():
+        """List all active programs (for dropdowns)."""
+        conn = get_social_db(_db_path)
+        try:
+            programs = conn.execute(
+                "SELECT id, name FROM programs WHERE is_active = 1 ORDER BY sort_order, name"
+            ).fetchall()
+            return jsonify([{'id': p['id'], 'name': p['name']} for p in programs])
+        finally:
+            conn.close()
+
+    @bp.route('/api/campaigns')
+    @login_required
+    def list_campaigns():
+        """List all active campaigns (for dropdowns)."""
+        conn = get_social_db(_db_path)
+        try:
+            campaigns = conn.execute(
+                "SELECT id, name FROM campaigns WHERE is_active = 1 ORDER BY sort_order, name"
+            ).fetchall()
+            return jsonify([{'id': c['id'], 'name': c['name']} for c in campaigns])
+        finally:
+            conn.close()
 
     # =========================================================================
     # DASHBOARD

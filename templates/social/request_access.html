@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Asset Gallery - {% if setup_mode %}Setup{% else %}Login{% endif %}</title>
+    <title>Smart Asset Gallery - Request Access</title>
     <style>
         :root {
             --bg-color: #0a0a0a;
@@ -30,22 +30,23 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 1rem;
         }
-        .login-card {
+        .card {
             background: var(--surface-color);
             border: 1px solid var(--glass-border);
             border-radius: 16px;
             padding: 2.5rem;
             width: 100%;
-            max-width: 420px;
+            max-width: 480px;
             box-shadow: var(--shadow-lg);
         }
-        .login-card h1 {
+        .card h1 {
             text-align: center;
             margin-bottom: 0.5rem;
             font-size: 1.5rem;
         }
-        .login-card .subtitle {
+        .card .subtitle {
             text-align: center;
             color: var(--text-muted);
             margin-bottom: 2rem;
@@ -60,7 +61,7 @@
             font-size: 0.85rem;
             color: var(--text-muted);
         }
-        .form-group input {
+        .form-group input, .form-group textarea {
             width: 100%;
             padding: 0.7rem 1rem;
             background: var(--bg-color);
@@ -70,9 +71,20 @@
             font-size: 0.95rem;
             outline: none;
             transition: border-color 0.2s;
+            font-family: inherit;
         }
-        .form-group input:focus {
+        .form-group input:focus, .form-group textarea:focus {
             border-color: var(--primary-color);
+        }
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .form-group small {
+            display: block;
+            margin-top: 0.3rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
         }
         .errors {
             background: rgba(220, 53, 69, 0.15);
@@ -107,51 +119,25 @@
             font-size: 0.85rem;
         }
         .back-link:hover { color: var(--text-color); }
-        .flash-messages {
-            margin-bottom: 1rem;
-        }
-        .flash {
-            padding: 0.6rem 1rem;
+        .info-box {
+            background: rgba(0, 123, 255, 0.1);
+            border: 1px solid var(--primary-color);
             border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin-bottom: 1.5rem;
             font-size: 0.85rem;
-            margin-bottom: 0.5rem;
-        }
-        .flash.success { background: rgba(32, 201, 151, 0.15); border: 1px solid var(--success-color); }
-        .flash.error { background: rgba(220, 53, 69, 0.15); border: 1px solid var(--danger-color); }
-        .flash.info { background: rgba(0, 123, 255, 0.15); border: 1px solid var(--primary-color); }
-        .auth-links {
-            display: flex;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-top: 1.2rem;
-            font-size: 0.85rem;
-        }
-        .auth-links a {
             color: var(--text-muted);
-            text-decoration: none;
-        }
-        .auth-links a:hover {
-            color: var(--primary-color);
-        }
-        .auth-links .divider {
-            color: var(--border-color);
         }
     </style>
 </head>
 <body>
-    <div class="login-card">
-        <h1>Smart Asset Gallery</h1>
-        <p class="subtitle">{% if setup_mode %}Create your admin account{% else %}Sign in to continue{% endif %}</p>
+    <div class="card">
+        <h1>Request Access</h1>
+        <p class="subtitle">Submit a request for a Smart Asset Gallery account</p>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="flash-messages">
-            {% for category, message in messages %}
-            <div class="flash {{ category }}">{{ message }}</div>
-            {% endfor %}
+        <div class="info-box">
+            Your request will be reviewed by an administrator. You'll receive an email once your request is approved.
         </div>
-        {% endif %}
-        {% endwith %}
 
         {% if errors is defined and errors %}
         <div class="errors">
@@ -163,54 +149,42 @@
         </div>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('social.setup') if setup_mode else url_for('social.login') }}">
-            <div class="form-group">
-                <label for="username">{% if setup_mode %}Username{% else %}Email or Username{% endif %}</label>
-                <input type="text" id="username" name="username" required minlength="3"
-                       value="{{ username if username is defined else '' }}" autocomplete="{% if setup_mode %}username{% else %}email{% endif %}">
-            </div>
-
-            {% if setup_mode %}
+        <form method="POST" action="{{ url_for('social.request_access') }}">
             <div class="form-group">
                 <label for="email">Email Address</label>
                 <input type="email" id="email" name="email" required
                        value="{{ email if email is defined else '' }}" autocomplete="email"
-                       placeholder="admin@example.com">
+                       placeholder="you@example.com">
+                <small>This will be your login username</small>
             </div>
+
             <div class="form-group">
                 <label for="display_name">Display Name</label>
-                <input type="text" id="display_name" name="display_name"
+                <input type="text" id="display_name" name="display_name" required minlength="2"
                        value="{{ display_name if display_name is defined else '' }}"
-                       placeholder="Shown in posts and dashboard">
+                       placeholder="Your full name">
             </div>
-            {% endif %}
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required minlength="8" autocomplete="{% if setup_mode %}new-password{% else %}current-password{% endif %}">
+                <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+                <small>At least 8 characters</small>
             </div>
 
-            {% if setup_mode %}
             <div class="form-group">
                 <label for="confirm_password">Confirm Password</label>
                 <input type="password" id="confirm_password" name="confirm_password" required minlength="8" autocomplete="new-password">
             </div>
-            {% endif %}
 
-            <button type="submit" class="btn-primary">
-                {% if setup_mode %}Create Admin Account{% else %}Log In{% endif %}
-            </button>
+            <div class="form-group">
+                <label for="reason">Why do you need access? (optional)</label>
+                <textarea id="reason" name="reason" placeholder="e.g., I'm on the marketing team and need to review assets">{{ reason if reason is defined else '' }}</textarea>
+            </div>
+
+            <button type="submit" class="btn-primary">Submit Request</button>
         </form>
 
-        {% if not setup_mode %}
-        <div class="auth-links">
-            <a href="{{ url_for('social.forgot_password') }}">Forgot password?</a>
-            <span class="divider">|</span>
-            <a href="{{ url_for('social.request_access') }}">Request access</a>
-        </div>
-        {% endif %}
-
-        <a href="/galleryout/" class="back-link">Back to Gallery</a>
+        <a href="{{ url_for('social.login') }}" class="back-link">Already have an account? Log in</a>
     </div>
 </body>
 </html>

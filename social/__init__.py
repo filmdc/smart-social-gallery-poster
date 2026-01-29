@@ -6,6 +6,7 @@ approval workflows, and publishing to Facebook, Instagram, and LinkedIn.
 """
 
 import os
+from datetime import datetime
 from flask import Blueprint
 
 SOCIAL_FEATURES_ENABLED = os.environ.get('SOCIAL_FEATURES_ENABLED', 'true').lower() == 'true'
@@ -27,5 +28,22 @@ def init_social(app, db_path):
     create_social_tables(db_path)
     register_routes(social_bp, db_path)
     app.register_blueprint(social_bp)
+
+    # Add template filters
+    @app.template_filter('timestamp_to_date')
+    def timestamp_to_date(timestamp):
+        """Convert Unix timestamp to readable date."""
+        try:
+            return datetime.fromtimestamp(timestamp).strftime('%b %d, %Y')
+        except (ValueError, TypeError):
+            return 'Unknown'
+
+    @app.template_filter('timestamp_to_datetime')
+    def timestamp_to_datetime(timestamp):
+        """Convert Unix timestamp to readable datetime."""
+        try:
+            return datetime.fromtimestamp(timestamp).strftime('%b %d, %Y %I:%M %p')
+        except (ValueError, TypeError):
+            return 'Unknown'
 
     return True

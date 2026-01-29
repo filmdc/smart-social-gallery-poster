@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Asset Gallery - Categories</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --surface-color: #1a1a1a;
+            --surface-hover: #252525;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --text-color: #f8f9fa;
+            --text-muted: #adb5bd;
+            --border-color: #343a40;
+            --danger-color: #dc3545;
+            --success-color: #20c997;
+            --warning-color: #ffc107;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+        .top-bar {
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .top-bar h1 { font-size: 1.2rem; }
+        .top-bar a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .top-bar a:hover { color: var(--text-color); }
+        .content {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        .section {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .section h2 {
+            font-size: 1rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--gradient-primary); color: white; }
+        .btn-secondary { background: var(--surface-hover); color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-danger { background: var(--danger-color); color: white; }
+        .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+        .category-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .category-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.8rem 1rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+        }
+        .category-info {
+            flex: 1;
+        }
+        .category-name {
+            font-weight: 500;
+        }
+        .category-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+        .category-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+        .inactive {
+            opacity: 0.5;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-left: 0.5rem;
+        }
+        .badge-inactive {
+            background: var(--warning-color);
+            color: #000;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: var(--shadow-lg);
+        }
+        .modal h3 { margin-bottom: 1rem; }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 0.6rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        .form-group textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+
+        .flash-messages { margin-bottom: 1.5rem; }
+        .flash {
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        .flash.success { background: rgba(32, 201, 151, 0.15); border: 1px solid var(--success-color); }
+        .flash.error { background: rgba(220, 53, 69, 0.15); border: 1px solid var(--danger-color); }
+        .flash.info { background: rgba(0, 123, 255, 0.15); border: 1px solid var(--primary-color); }
+
+        .info-text {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <h1>Programs & Campaigns</h1>
+        <a href="{{ url_for('social.settings') }}">Back to Settings</a>
+    </div>
+
+    <div class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <!-- Programs Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Programs</h2>
+                {% if current_user.is_admin %}
+                <button class="btn btn-primary btn-sm" onclick="showAddModal('program')">Add Program</button>
+                {% endif %}
+            </div>
+            <p class="info-text">Programs represent organizational initiatives (e.g., "Workforce Development", "Youth Services"). Only admins can manage programs.</p>
+
+            <div class="category-list">
+                {% if programs %}
+                    {% for program in programs %}
+                    <div class="category-item {% if not program.is_active %}inactive{% endif %}" data-id="{{ program.id }}">
+                        <div class="category-info">
+                            <span class="category-name">{{ program.name }}</span>
+                            {% if not program.is_active %}<span class="badge badge-inactive">Inactive</span>{% endif %}
+                            {% if program.description %}
+                            <div class="category-desc">{{ program.description }}</div>
+                            {% endif %}
+                        </div>
+                        {% if current_user.is_admin %}
+                        <div class="category-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="showEditModal('program', '{{ program.id }}', '{{ program.name }}', '{{ program.description or '' }}', {{ 'true' if program.is_active else 'false' }})">Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCategory('program', '{{ program.id }}', '{{ program.name }}')">Delete</button>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">No programs defined yet.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Campaigns Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Campaigns</h2>
+                <button class="btn btn-primary btn-sm" onclick="showAddModal('campaign')">Add Campaign</button>
+            </div>
+            <p class="info-text">Campaigns represent marketing initiatives (e.g., "Summer Jobs 2026", "Holiday Giving"). Marketing admins and admins can manage campaigns.</p>
+
+            <div class="category-list">
+                {% if campaigns %}
+                    {% for campaign in campaigns %}
+                    <div class="category-item {% if not campaign.is_active %}inactive{% endif %}" data-id="{{ campaign.id }}">
+                        <div class="category-info">
+                            <span class="category-name">{{ campaign.name }}</span>
+                            {% if not campaign.is_active %}<span class="badge badge-inactive">Inactive</span>{% endif %}
+                            {% if campaign.description %}
+                            <div class="category-desc">{{ campaign.description }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="category-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="showEditModal('campaign', '{{ campaign.id }}', '{{ campaign.name }}', '{{ campaign.description or '' }}', {{ 'true' if campaign.is_active else 'false' }})">Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCategory('campaign', '{{ campaign.id }}', '{{ campaign.name }}')">Delete</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">No campaigns defined yet.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="categoryModal" class="modal-overlay">
+        <div class="modal">
+            <h3 id="modalTitle">Add Program</h3>
+            <form id="categoryForm" method="POST">
+                <div class="form-group">
+                    <label for="categoryName">Name</label>
+                    <input type="text" id="categoryName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="categoryDesc">Description (optional)</label>
+                    <textarea id="categoryDesc" name="description"></textarea>
+                </div>
+                <div class="form-group" id="activeGroup" style="display:none;">
+                    <label>
+                        <input type="checkbox" id="categoryActive" checked> Active
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="hideModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmit">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentType = 'program';
+        let currentId = null;
+        let isEditing = false;
+
+        function showAddModal(type) {
+            currentType = type;
+            currentId = null;
+            isEditing = false;
+
+            document.getElementById('modalTitle').textContent = type === 'program' ? 'Add Program' : 'Add Campaign';
+            document.getElementById('categoryForm').action = '/galleryout/social/' + type + 's';
+            document.getElementById('categoryName').value = '';
+            document.getElementById('categoryDesc').value = '';
+            document.getElementById('activeGroup').style.display = 'none';
+            document.getElementById('modalSubmit').textContent = 'Add';
+
+            document.getElementById('categoryModal').classList.add('active');
+            document.getElementById('categoryName').focus();
+        }
+
+        function showEditModal(type, id, name, description, isActive) {
+            currentType = type;
+            currentId = id;
+            isEditing = true;
+
+            document.getElementById('modalTitle').textContent = 'Edit ' + (type === 'program' ? 'Program' : 'Campaign');
+            document.getElementById('categoryName').value = name;
+            document.getElementById('categoryDesc').value = description;
+            document.getElementById('categoryActive').checked = isActive;
+            document.getElementById('activeGroup').style.display = 'block';
+            document.getElementById('modalSubmit').textContent = 'Save';
+
+            document.getElementById('categoryModal').classList.add('active');
+            document.getElementById('categoryName').focus();
+        }
+
+        function hideModal() {
+            document.getElementById('categoryModal').classList.remove('active');
+        }
+
+        document.getElementById('categoryForm').addEventListener('submit', function(e) {
+            if (isEditing) {
+                e.preventDefault();
+                const data = {
+                    name: document.getElementById('categoryName').value,
+                    description: document.getElementById('categoryDesc').value,
+                    is_active: document.getElementById('categoryActive').checked
+                };
+
+                fetch('/galleryout/social/' + currentType + 's/' + currentId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(resp => resp.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert(result.error || 'Error updating');
+                    }
+                });
+            }
+            // For add, let the form submit normally
+        });
+
+        function deleteCategory(type, id, name) {
+            if (!confirm('Delete "' + name + '"? This will also remove it from any assigned files.')) return;
+
+            fetch('/galleryout/social/' + type + 's/' + id, { method: 'DELETE' })
+                .then(resp => resp.json())
+                .then(result => {
+                    if (result.success) {
+                        location.reload();
+                    } else {
+                        alert(result.error || 'Error deleting');
+                    }
+                });
+        }
+
+        // Close modal on overlay click
+        document.getElementById('categoryModal').addEventListener('click', function(e) {
+            if (e.target === this) hideModal();
+        });
+
+        // Close modal on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') hideModal();
+        });
+    </script>
+</body>
+</html>

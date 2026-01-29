@@ -7,7 +7,7 @@ tables and schema versioning via a social_meta table.
 
 import sqlite3
 
-SOCIAL_SCHEMA_VERSION = 2
+SOCIAL_SCHEMA_VERSION = 4
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS social_meta (
@@ -18,12 +18,38 @@ CREATE TABLE IF NOT EXISTS social_meta (
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
+    email TEXT,
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'submitter',
+    role TEXT NOT NULL DEFAULT 'employee',
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at REAL NOT NULL,
     last_login REAL
+);
+
+CREATE TABLE IF NOT EXISTS registration_requests (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by TEXT,
+    reviewed_at REAL,
+    denial_reason TEXT,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at REAL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS social_accounts (
@@ -89,6 +115,50 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     updated_at REAL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS programs (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    created_by TEXT,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS campaigns (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    created_by TEXT,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS file_programs (
+    id TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    program_id TEXT NOT NULL,
+    assigned_at REAL NOT NULL,
+    assigned_by TEXT,
+    UNIQUE(file_id, program_id),
+    FOREIGN KEY (program_id) REFERENCES programs(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS file_campaigns (
+    id TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    assigned_at REAL NOT NULL,
+    assigned_by TEXT,
+    UNIQUE(file_id, campaign_id),
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by) REFERENCES users(id)
+);
 """
 
 
@@ -141,6 +211,103 @@ def _run_migrations(conn, from_version, to_version):
                 starting_folder TEXT DEFAULT NULL,
                 updated_at REAL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+    if from_version < 3:
+        # Add email column to users table
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column might already exist
+
+        # Add registration_requests table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS registration_requests (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                reason TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewed_by TEXT,
+                reviewed_at REAL,
+                denial_reason TEXT,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                FOREIGN KEY (reviewed_by) REFERENCES users(id)
+            )
+        """)
+
+        # Add password_reset_tokens table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                used_at REAL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+    if from_version < 4:
+        # Add programs table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS programs (
+                id TEXT PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER DEFAULT 0,
+                created_at REAL NOT NULL,
+                created_by TEXT,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # Add campaigns table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id TEXT PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER DEFAULT 0,
+                created_at REAL NOT NULL,
+                created_by TEXT,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+
+        # Add file_programs junction table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_programs (
+                id TEXT PRIMARY KEY,
+                file_id TEXT NOT NULL,
+                program_id TEXT NOT NULL,
+                assigned_at REAL NOT NULL,
+                assigned_by TEXT,
+                UNIQUE(file_id, program_id),
+                FOREIGN KEY (program_id) REFERENCES programs(id) ON DELETE CASCADE,
+                FOREIGN KEY (assigned_by) REFERENCES users(id)
+            )
+        """)
+
+        # Add file_campaigns junction table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_campaigns (
+                id TEXT PRIMARY KEY,
+                file_id TEXT NOT NULL,
+                campaign_id TEXT NOT NULL,
+                assigned_at REAL NOT NULL,
+                assigned_by TEXT,
+                UNIQUE(file_id, campaign_id),
+                FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+                FOREIGN KEY (assigned_by) REFERENCES users(id)
             )
         """)
         conn.commit()

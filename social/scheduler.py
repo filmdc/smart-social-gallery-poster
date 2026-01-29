@@ -29,6 +29,8 @@ def init_scheduler(db_path, app_secret_key):
                        misfire_grace_time=30)
     _scheduler.add_job(_refresh_expiring_tokens, 'interval', hours=12, id='refresh_tokens',
                        misfire_grace_time=300)
+    _scheduler.add_job(_cleanup_expired_data, 'interval', hours=24, id='cleanup_expired_data',
+                       misfire_grace_time=3600)
     _scheduler.start()
 
 
@@ -221,3 +223,44 @@ def publish_post_now(post_id, db_path, app_secret_key):
 
     t = threading.Thread(target=_publish_post, args=(post_dict,), daemon=True)
     t.start()
+
+
+def _cleanup_expired_data():
+    """Clean up expired data: move history (30 days), registration requests, password reset tokens."""
+    import sqlite3
+
+    if not _db_path:
+        return
+
+    now = time.time()
+    thirty_days_ago = now - (30 * 24 * 60 * 60)
+
+    # Clean up move history from main gallery database
+    try:
+        # The gallery database is at the same location but without the social tables
+        # We need to connect to the same database file
+        conn = sqlite3.connect(_db_path)
+        conn.execute("DELETE FROM file_move_history WHERE moved_at < ?", (thirty_days_ago,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Table might not exist in the database
+
+    # Clean up expired registration requests and password reset tokens
+    conn = get_social_db(_db_path)
+    try:
+        # Clean up expired registration requests (pending ones that expired)
+        conn.execute(
+            "DELETE FROM registration_requests WHERE status = 'pending' AND expires_at < ?",
+            (now,)
+        )
+        # Clean up used or expired password reset tokens
+        conn.execute(
+            "DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL",
+            (now,)
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
