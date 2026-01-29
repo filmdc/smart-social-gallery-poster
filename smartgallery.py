@@ -1173,10 +1173,25 @@ def scan_folder_and_extract_options(folder_path):
 
 def initialize_gallery():
     print("INFO: Initializing gallery...")
-    global FFPROBE_EXECUTABLE_PATH
+    global FFPROBE_EXECUTABLE_PATH, THUMBNAIL_CACHE_DIR, SQLITE_CACHE_DIR, DATABASE_FILE, ZIP_CACHE_DIR, SMASHCUT_OUTPUT_DIR
     FFPROBE_EXECUTABLE_PATH = find_ffprobe_path()
-    os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
-    os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
+
+    # Try to create cache directories, fall back to /tmp if permission denied
+    try:
+        os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
+        os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
+    except PermissionError:
+        print(f"{Colors.YELLOW}WARNING: Cannot create cache directories in {BASE_SMARTGALLERY_PATH}{Colors.RESET}")
+        print(f"{Colors.YELLOW}         Falling back to /tmp for cache storage{Colors.RESET}")
+        # Update paths to use /tmp
+        THUMBNAIL_CACHE_DIR = os.path.join('/tmp', THUMBNAIL_CACHE_FOLDER_NAME)
+        SQLITE_CACHE_DIR = os.path.join('/tmp', SQLITE_CACHE_FOLDER_NAME)
+        DATABASE_FILE = os.path.join(SQLITE_CACHE_DIR, DATABASE_FILENAME)
+        ZIP_CACHE_DIR = os.path.join('/tmp', ZIP_CACHE_FOLDER_NAME)
+        SMASHCUT_OUTPUT_DIR = os.path.join('/tmp', SMASHCUT_FOLDER_NAME)
+        os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
+        os.makedirs(SQLITE_CACHE_DIR, exist_ok=True)
+
     with get_db_connection() as conn:
         try:
             # Check if last_scanned column exists
