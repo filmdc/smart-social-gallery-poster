@@ -141,6 +141,13 @@ if [ "A${whoami}" == "Asmartgallerytoo" ]; then
   sudo groupmod -o -g ${WANTED_GID} smartgallery || error_exit "Failed to set GID of smartgallery user"
   sudo usermod -o -u ${WANTED_UID} smartgallery || error_exit "Failed to set UID of smartgallery user"
   sudo chown -R ${WANTED_UID}:${WANTED_GID} /home/smartgallery || error_exit "Failed to set owner of /home/smartgallery"
+
+  # Create data directories in mounted volume with proper permissions (for Railway/Docker volumes)
+  if [ -d /app/data ]; then
+    sudo mkdir -p /app/data/.thumbnails_cache /app/data/.sqlite_cache /app/data/.zip_cache 2>/dev/null || true
+    sudo chown -R ${WANTED_UID}:${WANTED_GID} /app/data 2>/dev/null || echo "WARNING: Could not set /app/data ownership"
+  fi
+
   save_env /tmp/smartgallerytoo_env.txt  
   # restart the script as smartgallery set with the correct UID/GID this time
   echo "-- Restarting as smartgallery user with UID ${WANTED_UID} GID ${WANTED_GID}"
