@@ -2311,16 +2311,6 @@
                             <option value="{{ pfx }}" {% if pfx in selected_prefixes %}selected{% endif %}>{{ pfx }}
                             </option>{% endif %}{% endfor %}
                         </select></div>
-                    <div class="filter-group"><label for="model-select">🧠 Models</label><select name="model"
-                            id="model-select" multiple>{% for model in available_models %}
-                            <option value="{{ model }}" {% if model in selected_models %}selected{% endif %}>{{ model }}
-                            </option>{% endfor %}
-                        </select></div>
-                    <div class="filter-group"><label for="lora-select">🎨 LoRAs</label><select name="lora"
-                            id="lora-select" multiple>{% for lora in available_loras %}
-                            <option value="{{ lora }}" {% if lora in selected_loras %}selected{% endif %}>{{ lora }}
-                            </option>{% endfor %}
-                        </select></div>
                     <div class="filter-group">
                         <div class="filter-group-inline"><input type="checkbox" name="favorites" id="favorites-check"
                                 value="true" {% if show_favorites %}checked{% endif %}><label for="favorites-check">⭐
@@ -2496,9 +2486,16 @@
                 <h2>Upload Files</h2>
                 <p id="upload-destination-text">Upload to: <strong></strong></p>
             </div>
-            <div class="upload-body"><input type="file" id="upload-file-input" multiple>
+            <div class="upload-body">
+                <input type="file" id="upload-file-input" multiple>
+                <input type="file" id="upload-folder-input" webkitdirectory directory multiple style="display:none;">
                 <div id="drop-zone">
-                    <p>Drag & Drop files here</p><button type="button" id="file-upload-btn">Or select files...</button>
+                    <p>Drag & Drop files, folders, or ZIP files here</p>
+                    <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+                        <button type="button" id="file-upload-btn">📄 Select Files</button>
+                        <button type="button" id="folder-upload-btn">📁 Select Folder</button>
+                    </div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem;">ZIP files will be extracted automatically</p>
                 </div>
                 <ul id="file-list"></ul>
                 <div id="upload-progress-container">
@@ -3643,13 +3640,101 @@ async function showNodeSummary(event, fileId) {
             if (e.target === compareOverlay) closeCompare();
         });
 
-        const uploadOverlay = document.getElementById('upload-overlay'); const showUploadModalBtn = document.getElementById('show-upload-modal-btn'); const uploadCancelBtn = document.getElementById('upload-cancel-btn'); const uploadSubmitBtn = document.getElementById('upload-submit-btn'); const dropZone = document.getElementById('drop-zone'); const fileInput = document.getElementById('upload-file-input'); const fileBrowseBtn = document.getElementById('file-upload-btn'); const fileList = document.getElementById('file-list'); const uploadProgressContainer = document.getElementById('upload-progress-container'); const uploadProgressFill = document.getElementById('upload-progress-fill'); const uploadDestinationText = document.getElementById('upload-destination-text').querySelector('strong'); let filesToUpload = [];
-        function resetUploadModal() { filesToUpload = []; fileList.innerHTML = ''; uploadProgressContainer.style.display = 'none'; uploadProgressFill.style.width = '0%'; fileInput.value = ''; uploadSubmitBtn.disabled = false; }
+        const uploadOverlay = document.getElementById('upload-overlay'); const showUploadModalBtn = document.getElementById('show-upload-modal-btn'); const uploadCancelBtn = document.getElementById('upload-cancel-btn'); const uploadSubmitBtn = document.getElementById('upload-submit-btn'); const dropZone = document.getElementById('drop-zone'); const fileInput = document.getElementById('upload-file-input'); const folderInput = document.getElementById('upload-folder-input'); const fileBrowseBtn = document.getElementById('file-upload-btn'); const folderBrowseBtn = document.getElementById('folder-upload-btn'); const fileList = document.getElementById('file-list'); const uploadProgressContainer = document.getElementById('upload-progress-container'); const uploadProgressFill = document.getElementById('upload-progress-fill'); const uploadDestinationText = document.getElementById('upload-destination-text').querySelector('strong'); let filesToUpload = []; // Array of {file: File, relativePath: string}
+        function resetUploadModal() { filesToUpload = []; fileList.innerHTML = ''; uploadProgressContainer.style.display = 'none'; uploadProgressFill.style.width = '0%'; fileInput.value = ''; folderInput.value = ''; uploadSubmitBtn.disabled = false; }
         function showUploadModal() { resetUploadModal(); uploadDestinationText.textContent = currentFolderInfo.display_name; document.body.classList.add('modal-open'); uploadOverlay.classList.add('visible'); }
         function closeUploadModal() { document.body.classList.remove('modal-open'); uploadOverlay.classList.remove('visible'); }
-        function handleFiles(files) { filesToUpload = [...filesToUpload, ...Array.from(files)]; renderFileList(); }
-        function renderFileList() { fileList.innerHTML = ''; filesToUpload.forEach(file => { const li = document.createElement('li'); const sizeKB = (file.size / 1024).toFixed(1); li.innerHTML = `<span>${file.name}</span> <span class="file-size">${sizeKB} KB</span>`; fileList.appendChild(li); }); }
-        function performUpload() { if (filesToUpload.length === 0) { showNotification('Please select files to upload.', 'warning'); return; } const formData = new FormData(); formData.append('folder_key', currentFolderKey); filesToUpload.forEach(file => { formData.append('files', file); }); const xhr = new XMLHttpRequest(); xhr.open('POST', '/galleryout/upload', true); uploadProgressContainer.style.display = 'block'; uploadSubmitBtn.disabled = true; uploadSubmitBtn.textContent = 'Uploading...'; xhr.upload.onprogress = function (event) { if (event.lengthComputable) { const percentComplete = (event.loaded / event.total) * 100; uploadProgressFill.style.width = percentComplete + '%'; } }; xhr.onload = function () { if (xhr.status >= 200 && xhr.status < 300) { const response = JSON.parse(xhr.responseText); showNotification(response.message || 'Upload successful!', 'success'); setTimeout(() => window.location.reload(), 1000); } else { try { const response = JSON.parse(xhr.responseText); showNotification(`Upload failed: ${response.message}`, 'error'); } catch (e) { showNotification(`Upload failed with status: ${xhr.status}`, 'error'); } uploadSubmitBtn.disabled = false; uploadSubmitBtn.textContent = 'Upload'; } }; xhr.onerror = function () { showNotification('An error occurred during the upload.', 'error'); uploadSubmitBtn.disabled = false; uploadSubmitBtn.textContent = 'Upload'; }; xhr.send(formData); }
+        function handleFiles(files, isFolder = false) {
+            Array.from(files).forEach(file => {
+                // Get the relative path for folder uploads
+                const relativePath = isFolder ? (file.webkitRelativePath || file.name) : '';
+                filesToUpload.push({ file: file, relativePath: relativePath });
+            });
+            renderFileList();
+        }
+        function renderFileList() {
+            fileList.innerHTML = '';
+            // Group files by folder for display
+            const folderGroups = {};
+            filesToUpload.forEach(({file, relativePath}) => {
+                if (relativePath && relativePath.includes('/')) {
+                    const folderName = relativePath.split('/')[0];
+                    if (!folderGroups[folderName]) folderGroups[folderName] = [];
+                    folderGroups[folderName].push({file, relativePath});
+                } else {
+                    if (!folderGroups['_root']) folderGroups['_root'] = [];
+                    folderGroups['_root'].push({file, relativePath});
+                }
+            });
+            // Render folders first
+            Object.keys(folderGroups).forEach(folder => {
+                if (folder === '_root') return;
+                const li = document.createElement('li');
+                const totalSize = folderGroups[folder].reduce((acc, f) => acc + f.file.size, 0);
+                const sizeKB = (totalSize / 1024).toFixed(1);
+                li.innerHTML = `<span>📁 ${folder}/ (${folderGroups[folder].length} files)</span> <span class="file-size">${sizeKB} KB</span>`;
+                li.style.fontWeight = '600';
+                fileList.appendChild(li);
+            });
+            // Render root files
+            if (folderGroups['_root']) {
+                folderGroups['_root'].forEach(({file}) => {
+                    const li = document.createElement('li');
+                    const sizeKB = (file.size / 1024).toFixed(1);
+                    const icon = file.name.toLowerCase().endsWith('.zip') ? '📦' : '📄';
+                    li.innerHTML = `<span>${icon} ${file.name}</span> <span class="file-size">${sizeKB} KB</span>`;
+                    fileList.appendChild(li);
+                });
+            }
+        }
+        function performUpload() {
+            if (filesToUpload.length === 0) { showNotification('Please select files to upload.', 'warning'); return; }
+            const formData = new FormData();
+            formData.append('folder_key', currentFolderKey);
+            filesToUpload.forEach(({file, relativePath}) => {
+                formData.append('files', file);
+                formData.append('relativePaths', relativePath);
+            });
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/galleryout/upload', true);
+            uploadProgressContainer.style.display = 'block';
+            uploadSubmitBtn.disabled = true;
+            uploadSubmitBtn.textContent = 'Uploading...';
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    uploadProgressFill.style.width = percentComplete + '%';
+                }
+            };
+            xhr.onload = function () {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const response = JSON.parse(xhr.responseText);
+                    let msg = response.message || 'Upload successful!';
+                    if (response.created_folders && response.created_folders.length > 0) {
+                        msg += ` Created ${response.created_folders.length} folder(s).`;
+                    }
+                    showNotification(msg, 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        showNotification(`Upload failed: ${response.message}`, 'error');
+                    } catch (e) {
+                        showNotification(`Upload failed with status: ${xhr.status}`, 'error');
+                    }
+                    uploadSubmitBtn.disabled = false;
+                    uploadSubmitBtn.textContent = 'Upload';
+                }
+            };
+            xhr.onerror = function () {
+                showNotification('An error occurred during the upload.', 'error');
+                uploadSubmitBtn.disabled = false;
+                uploadSubmitBtn.textContent = 'Upload';
+            };
+            xhr.send(formData);
+        }
+        folderBrowseBtn.addEventListener('click', () => folderInput.click());
+        folderInput.addEventListener('change', (e) => handleFiles(e.target.files, true));
         function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
         // --- RESCAN FOLDER LOGIC ---
@@ -3707,8 +3792,6 @@ async function showNodeSummary(event, fileId) {
 
             new TomSelect('#extension-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📄 Select extensions...' });
             new TomSelect('#prefix-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏷️ Select prefixes...' });
-            new TomSelect('#model-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🧠 Select models...' });
-            new TomSelect('#lora-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🎨 Select LoRAs...' });
 
             // View size slider functionality
             const viewSizeSlider = document.getElementById('view-size-slider');

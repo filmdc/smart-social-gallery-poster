@@ -337,17 +337,17 @@
                         {% endif %}
                     {% endif %}
 
-                    {% if post.status == 'pending_approval' and current_user.is_admin %}
+                    {% if post.status == 'pending_approval' and current_user.can_post_without_approval %}
                         <a href="{{ url_for('social.compose', post_id=post.id) }}" class="btn btn-secondary btn-sm">Edit</a>
                         <button class="btn btn-success btn-sm" onclick="approvePost('{{ post.id }}')">Approve</button>
                         <button class="btn btn-danger btn-sm" onclick="showRejectModal('{{ post.id }}')">Reject</button>
                     {% endif %}
 
-                    {% if post.status == 'approved' and current_user.is_admin %}
+                    {% if post.status == 'approved' and current_user.can_post_without_approval %}
                         <button class="btn btn-success btn-sm" onclick="publishPost('{{ post.id }}')">Publish Now</button>
                     {% endif %}
 
-                    {% if post.status == 'failed' and current_user.is_admin %}
+                    {% if post.status == 'failed' and current_user.can_post_without_approval %}
                         <button class="btn btn-warning btn-sm" onclick="publishPost('{{ post.id }}')">Retry</button>
                     {% endif %}
 

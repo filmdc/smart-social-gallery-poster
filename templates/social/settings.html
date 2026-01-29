@@ -157,7 +157,8 @@
             font-weight: 600;
         }
         .role-badge.admin { background: rgba(0,123,255,0.2); color: var(--primary-color); }
-        .role-badge.submitter { background: rgba(173,181,189,0.2); color: var(--text-muted); }
+        .role-badge.marketing_admin { background: rgba(32,201,151,0.2); color: var(--success-color); }
+        .role-badge.employee { background: rgba(173,181,189,0.2); color: var(--text-muted); }
 
         /* Add user form */
         .add-user-form {
@@ -438,7 +439,8 @@
                             <select onchange="updateUserRole('{{ user.id }}', this.value)"
                                     style="background:var(--bg-color);color:var(--text-color);border:1px solid var(--border-color);border-radius:4px;padding:2px 6px;font-size:0.8rem;">
                                 <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
-                                <option value="submitter" {% if user.role == 'submitter' %}selected{% endif %}>Submitter</option>
+                                <option value="marketing_admin" {% if user.role == 'marketing_admin' %}selected{% endif %}>Marketing Admin</option>
+                                <option value="employee" {% if user.role == 'employee' %}selected{% endif %}>Employee</option>
                             </select>
                         </td>
                         <td>
@@ -476,7 +478,8 @@
                 <div>
                     <label>Role</label>
                     <select id="new-role">
-                        <option value="submitter">Submitter</option>
+                        <option value="employee">Employee</option>
+                        <option value="marketing_admin">Marketing Admin</option>
                         <option value="admin">Admin</option>
                     </select>
                 </div>

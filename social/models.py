@@ -7,7 +7,7 @@ tables and schema versioning via a social_meta table.
 
 import sqlite3
 
-SOCIAL_SCHEMA_VERSION = 1
+SOCIAL_SCHEMA_VERSION = 2
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS social_meta (
@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS post_platforms (
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     FOREIGN KEY (social_account_id) REFERENCES social_accounts(id)
 );
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL UNIQUE,
+    favorite_folders TEXT DEFAULT '[]',
+    favorite_files TEXT DEFAULT '[]',
+    starting_folder TEXT DEFAULT NULL,
+    updated_at REAL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 
@@ -120,7 +130,17 @@ def create_social_tables(db_path):
 
 def _run_migrations(conn, from_version, to_version):
     """Run incremental schema migrations."""
-    # Future migrations go here as elif blocks:
-    # if from_version < 2:
-    #     conn.execute("ALTER TABLE ...")
-    pass
+    if from_version < 2:
+        # Add user_preferences table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                favorite_folders TEXT DEFAULT '[]',
+                favorite_files TEXT DEFAULT '[]',
+                starting_folder TEXT DEFAULT NULL,
+                updated_at REAL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()

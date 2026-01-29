@@ -22,7 +22,19 @@ login_manager = LoginManager()
 
 
 class User(UserMixin):
-    """User model backed by SQLite."""
+    """User model backed by SQLite.
+
+    Supported roles:
+    - admin: Full access to all features including user management, social account management,
+             SharePoint sync, and all post management operations.
+    - marketing_admin: Can manage folders, delete media, post to social media without requiring
+                       approval. Cannot manage users or connect social accounts.
+    - employee: Can browse gallery, use media to start new social media post submissions,
+                and submit posts for approval. Cannot delete media or manage folders.
+    """
+
+    # Valid roles for this application
+    VALID_ROLES = ('admin', 'marketing_admin', 'employee')
 
     def __init__(self, id, username, display_name, role, is_active, password_hash=None,
                  created_at=None, last_login=None):
@@ -41,6 +53,42 @@ class User(UserMixin):
 
     @property
     def is_admin(self):
+        """Full admin access - user management, social accounts, SharePoint, etc."""
+        return self.role == 'admin'
+
+    @property
+    def is_marketing_admin(self):
+        """Marketing admin - can manage media, post without approval."""
+        return self.role == 'marketing_admin'
+
+    @property
+    def is_employee(self):
+        """Employee - can browse and submit posts for approval."""
+        return self.role == 'employee'
+
+    @property
+    def can_manage_media(self):
+        """Can delete files and manage folders."""
+        return self.role in ('admin', 'marketing_admin')
+
+    @property
+    def can_post_without_approval(self):
+        """Can approve and publish posts without needing approval from others."""
+        return self.role in ('admin', 'marketing_admin')
+
+    @property
+    def can_manage_users(self):
+        """Can create, edit, and delete users."""
+        return self.role == 'admin'
+
+    @property
+    def can_manage_social_accounts(self):
+        """Can connect and disconnect social media accounts."""
+        return self.role == 'admin'
+
+    @property
+    def can_manage_sharepoint(self):
+        """Can configure and sync SharePoint integration."""
         return self.role == 'admin'
 
     def check_password(self, password):
@@ -144,6 +192,38 @@ def admin_required(f):
             return login_manager.unauthorized()
         if not current_user.is_admin:
             flash('Admin access required.', 'error')
+            return redirect(url_for('social.dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def media_manager_required(f):
+    """Decorator that requires the user to have media management permissions.
+
+    Allows admin and marketing_admin roles.
+    """
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if not current_user.can_manage_media:
+            flash('Media management access required.', 'error')
+            return redirect(url_for('social.dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def approver_required(f):
+    """Decorator that requires the user to have post approval permissions.
+
+    Allows admin and marketing_admin roles who can approve/publish posts.
+    """
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if not current_user.can_post_without_approval:
+            flash('Post approval access required.', 'error')
             return redirect(url_for('social.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
