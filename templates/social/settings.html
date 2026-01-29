@@ -419,7 +419,12 @@
 
         <!-- User Management -->
         <div class="section">
-            <h2>User Management</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h2 style="margin-bottom:0;">User Management</h2>
+                <a href="{{ url_for('social.registration_requests') }}" class="btn btn-secondary btn-sm">
+                    Pending Requests
+                </a>
+            </div>
             <table class="user-table">
                 <thead>
                     <tr>

@@ -14,7 +14,13 @@ from flask import (render_template, request, redirect, url_for, jsonify,
                    flash, session, current_app)
 from flask_login import login_user, logout_user, login_required, current_user
 
-from social.auth import User, admin_required, approver_required, has_users
+from social.auth import (
+    User, admin_required, approver_required, has_users,
+    create_registration_request, get_pending_registration_requests,
+    get_registration_request, approve_registration_request,
+    deny_registration_request, create_password_reset_token,
+    validate_password_reset_token, use_password_reset_token
+)
 from social.models import get_social_db
 from social.oauth import (
     facebook_available, linkedin_available,
@@ -60,6 +66,7 @@ def register_routes(bp, db_path):
 
         if request.method == 'POST':
             username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '').strip()
             confirm = request.form.get('confirm_password', '').strip()
             display_name = request.form.get('display_name', '').strip() or username
@@ -67,6 +74,8 @@ def register_routes(bp, db_path):
             errors = []
             if not username or len(username) < 3:
                 errors.append('Username must be at least 3 characters.')
+            if not email or '@' not in email:
+                errors.append('Please enter a valid email address.')
             if not password or len(password) < 8:
                 errors.append('Password must be at least 8 characters.')
             if password != confirm:
@@ -75,9 +84,9 @@ def register_routes(bp, db_path):
             if errors:
                 return render_template('social/login.html', setup_mode=True,
                                        errors=errors, username=username,
-                                       display_name=display_name)
+                                       email=email, display_name=display_name)
 
-            user = User.create(username, password, display_name, 'admin', _db_path)
+            user = User.create(username, password, display_name, 'admin', _db_path, email=email)
             login_user(user)
             user.update_last_login(_db_path)
             flash('Admin account created successfully.', 'success')
@@ -95,10 +104,14 @@ def register_routes(bp, db_path):
             return redirect(url_for('social.dashboard'))
 
         if request.method == 'POST':
-            username = request.form.get('username', '').strip()
+            username_or_email = request.form.get('username', '').strip()
             password = request.form.get('password', '')
 
-            user = User.get_by_username(username, _db_path)
+            # Try to find user by username first, then by email
+            user = User.get_by_username(username_or_email, _db_path)
+            if not user:
+                user = User.get_by_email(username_or_email, _db_path)
+
             if user and user.is_active and user.check_password(password):
                 login_user(user)
                 user.update_last_login(_db_path)
@@ -106,8 +119,8 @@ def register_routes(bp, db_path):
                 return redirect(next_page or url_for('social.dashboard'))
 
             return render_template('social/login.html', setup_mode=False,
-                                   errors=['Invalid username or password.'],
-                                   username=username)
+                                   errors=['Invalid username/email or password.'],
+                                   username=username_or_email)
 
         return render_template('social/login.html', setup_mode=False)
 
@@ -116,6 +129,242 @@ def register_routes(bp, db_path):
     def logout():
         logout_user()
         return redirect(url_for('gallery_redirect_base'))
+
+    # =========================================================================
+    # REGISTRATION REQUEST
+    # =========================================================================
+
+    @bp.route('/request-access', methods=['GET', 'POST'])
+    def request_access():
+        """Public page for users to request access."""
+        if not has_users(_db_path):
+            return redirect(url_for('social.setup'))
+
+        if current_user.is_authenticated:
+            return redirect(url_for('social.dashboard'))
+
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip().lower()
+            display_name = request.form.get('display_name', '').strip()
+            password = request.form.get('password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+            reason = request.form.get('reason', '').strip()
+
+            errors = []
+            if not email or '@' not in email:
+                errors.append('Please enter a valid email address.')
+            if not display_name or len(display_name) < 2:
+                errors.append('Display name must be at least 2 characters.')
+            if not password or len(password) < 8:
+                errors.append('Password must be at least 8 characters.')
+            if password != confirm_password:
+                errors.append('Passwords do not match.')
+
+            if errors:
+                return render_template('social/request_access.html',
+                                       errors=errors,
+                                       email=email,
+                                       display_name=display_name,
+                                       reason=reason)
+
+            request_id, error = create_registration_request(
+                email, display_name, password, reason, _db_path
+            )
+
+            if error:
+                return render_template('social/request_access.html',
+                                       errors=[error],
+                                       email=email,
+                                       display_name=display_name,
+                                       reason=reason)
+
+            # Send notification to admins
+            try:
+                from social.email import (
+                    email_configured, send_registration_request_notification
+                )
+                if email_configured():
+                    admins = User.get_admins(_db_path)
+                    admin_emails = [a.email for a in admins if a.email]
+                    if admin_emails:
+                        send_registration_request_notification(
+                            admin_emails, display_name, email, reason
+                        )
+            except Exception as e:
+                # Log but don't fail the request
+                print(f"Warning: Could not send admin notification email: {e}")
+
+            flash('Your access request has been submitted. You will receive an email when it is reviewed.', 'success')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/request_access.html')
+
+    # =========================================================================
+    # PASSWORD RESET
+    # =========================================================================
+
+    @bp.route('/forgot-password', methods=['GET', 'POST'])
+    def forgot_password():
+        """Request password reset."""
+        if not has_users(_db_path):
+            return redirect(url_for('social.setup'))
+
+        if current_user.is_authenticated:
+            return redirect(url_for('social.dashboard'))
+
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip().lower()
+
+            if not email or '@' not in email:
+                return render_template('social/forgot_password.html',
+                                       errors=['Please enter a valid email address.'],
+                                       email=email)
+
+            # Find user by email
+            user = User.get_by_email(email, _db_path)
+
+            # Always show success message to prevent email enumeration
+            if user and user.is_active:
+                token, error = create_password_reset_token(user.id, _db_path)
+                if token and not error:
+                    try:
+                        from social.email import email_configured, send_password_reset
+                        if email_configured():
+                            send_password_reset(user.email, user.display_name, token)
+                    except Exception as e:
+                        print(f"Warning: Could not send password reset email: {e}")
+
+            flash('If an account with that email exists, you will receive a password reset link.', 'info')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/forgot_password.html')
+
+    @bp.route('/reset-password', methods=['GET', 'POST'])
+    def reset_password():
+        """Reset password using token."""
+        token = request.args.get('token', '')
+
+        if not token:
+            flash('Invalid reset link.', 'error')
+            return redirect(url_for('social.login'))
+
+        # Validate token
+        user_id, error = validate_password_reset_token(token, _db_path)
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('social.forgot_password'))
+
+        if request.method == 'POST':
+            password = request.form.get('password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+
+            errors = []
+            if not password or len(password) < 8:
+                errors.append('Password must be at least 8 characters.')
+            if password != confirm_password:
+                errors.append('Passwords do not match.')
+
+            if errors:
+                return render_template('social/reset_password.html',
+                                       errors=errors,
+                                       token=token)
+
+            success, error = use_password_reset_token(token, password, _db_path)
+            if error:
+                flash(error, 'error')
+                return redirect(url_for('social.forgot_password'))
+
+            flash('Your password has been reset. Please log in with your new password.', 'success')
+            return redirect(url_for('social.login'))
+
+        return render_template('social/reset_password.html', token=token)
+
+    # =========================================================================
+    # REGISTRATION REQUEST MANAGEMENT (Admin)
+    # =========================================================================
+
+    @bp.route('/registration-requests')
+    @admin_required
+    def registration_requests():
+        """List pending registration requests."""
+        requests = get_pending_registration_requests(_db_path)
+        return render_template('social/registration_requests.html', requests=requests)
+
+    @bp.route('/registration-requests/<request_id>/approve', methods=['POST'])
+    @admin_required
+    def approve_request(request_id):
+        """Approve a registration request."""
+        role = request.form.get('role', 'employee')
+        if role not in User.VALID_ROLES:
+            role = 'employee'
+
+        req = get_registration_request(request_id, _db_path)
+        if not req:
+            if request.is_json:
+                return jsonify({'error': 'Request not found'}), 404
+            flash('Registration request not found.', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        user, error = approve_registration_request(
+            request_id, current_user.id, role, _db_path
+        )
+
+        if error:
+            if request.is_json:
+                return jsonify({'error': error}), 400
+            flash(f'Error approving request: {error}', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        # Send approval notification
+        try:
+            from social.email import email_configured, send_registration_approved
+            if email_configured():
+                send_registration_approved(user.email, user.display_name)
+        except Exception as e:
+            print(f"Warning: Could not send approval email: {e}")
+
+        if request.is_json:
+            return jsonify({'success': True, 'user_id': user.id})
+
+        flash(f'Registration approved. {user.display_name} can now log in.', 'success')
+        return redirect(url_for('social.registration_requests'))
+
+    @bp.route('/registration-requests/<request_id>/deny', methods=['POST'])
+    @admin_required
+    def deny_request(request_id):
+        """Deny a registration request."""
+        reason = request.form.get('reason', '') if not request.is_json else request.json.get('reason', '')
+
+        req = get_registration_request(request_id, _db_path)
+        if not req:
+            if request.is_json:
+                return jsonify({'error': 'Request not found'}), 404
+            flash('Registration request not found.', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        success, error = deny_registration_request(
+            request_id, current_user.id, reason, _db_path
+        )
+
+        if error:
+            if request.is_json:
+                return jsonify({'error': error}), 400
+            flash(f'Error denying request: {error}', 'error')
+            return redirect(url_for('social.registration_requests'))
+
+        # Send denial notification
+        try:
+            from social.email import email_configured, send_registration_denied
+            if email_configured():
+                send_registration_denied(req['email'], req['display_name'], reason)
+        except Exception as e:
+            print(f"Warning: Could not send denial email: {e}")
+
+        if request.is_json:
+            return jsonify({'success': True})
+
+        flash('Registration request denied.', 'info')
+        return redirect(url_for('social.registration_requests'))
 
     # =========================================================================
     # DASHBOARD

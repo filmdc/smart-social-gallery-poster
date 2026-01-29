@@ -1252,6 +1252,44 @@ def initialize_gallery():
         print(f"{Colors.YELLOW}WARNING: SharePoint init failed: {e}{Colors.RESET}")
 
 
+# --- AUTHENTICATION PROTECTION ---
+# Protect all gallery routes - requires login when social features are enabled
+@app.before_request
+def require_authentication():
+    """Require authentication for all gallery routes when social features are enabled."""
+    if not SOCIAL_FEATURES_ENABLED:
+        return None  # No authentication required if social features disabled
+
+    # Import here to avoid circular imports
+    from flask_login import current_user
+
+    # Define public paths that don't require authentication
+    public_paths = [
+        '/galleryout/social/login',
+        '/galleryout/social/setup',
+        '/galleryout/social/logout',
+        '/galleryout/social/request-access',
+        '/galleryout/social/forgot-password',
+        '/galleryout/social/reset-password',
+        '/favicon.ico',
+        '/static/',
+    ]
+
+    # Check if current path is public
+    for public_path in public_paths:
+        if request.path.startswith(public_path) or request.path == public_path:
+            return None
+
+    # All other routes require authentication
+    if not current_user.is_authenticated:
+        # Redirect to login for HTML requests, return 401 for API requests
+        if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+            return jsonify({'error': 'Authentication required'}), 401
+        return redirect(url_for('social.login', next=request.url))
+
+    return None
+
+
 # --- FLASK ROUTES ---
 @app.route('/galleryout/')
 @app.route('/')
