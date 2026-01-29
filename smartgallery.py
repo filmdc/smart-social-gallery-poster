@@ -2869,7 +2869,7 @@ def check_for_updates():
             if match:
                 remote_version = float(match.group(1))
                 if remote_version > APP_VERSION:
-                    print(f"\n\033[93m{'\033[1m'}NOTICE: A new version ({remote_version}) is available!{'\033[0m'}")
+                    print(f"\n{Colors.YELLOW}{Colors.BOLD}NOTICE: A new version ({remote_version}) is available!{Colors.RESET}")
                     print(f"Please update from: {GITHUB_REPO_URL}\n")
                 else:
                     print("You are up to date.")
@@ -2940,15 +2940,22 @@ if __name__ == '__main__':
         try:
             os.makedirs(BASE_OUTPUT_PATH, exist_ok=True)
             print(f"{Colors.GREEN}Created output directory: {BASE_OUTPUT_PATH}{Colors.RESET}")
-        except OSError:
+        except OSError as e:
+            print(f"{Colors.RED}Failed to create output directory: {e}{Colors.RESET}")
             show_config_error_and_exit(BASE_OUTPUT_PATH)
 
-    # --- CHECK: INPUT PATH CHECK (Non-Blocking / Warning) ---
+    # --- CHECK: INPUT PATH CHECK (Auto-create for containers/deployments) ---
     if not os.path.exists(BASE_INPUT_PATH):
-        print(f"{Colors.YELLOW}{Colors.BOLD}WARNING: Input Path not found!{Colors.RESET}")
-        print(f"{Colors.YELLOW}   The path '{BASE_INPUT_PATH}' does not exist.{Colors.RESET}")
-        print(f"{Colors.YELLOW}   > Source media lookups will be DISABLED.{Colors.RESET}")
-        print(f"{Colors.YELLOW}   > The gallery will still function normally.{Colors.RESET}\n")
+        try:
+            os.makedirs(BASE_INPUT_PATH, exist_ok=True)
+            print(f"{Colors.GREEN}Created input directory: {BASE_INPUT_PATH}{Colors.RESET}")
+        except OSError as e:
+            # Input directory is optional, just warn
+            print(f"{Colors.YELLOW}{Colors.BOLD}WARNING: Input Path not found and could not be created!{Colors.RESET}")
+            print(f"{Colors.YELLOW}   Path: '{BASE_INPUT_PATH}'{Colors.RESET}")
+            print(f"{Colors.YELLOW}   Error: {e}{Colors.RESET}")
+            print(f"{Colors.YELLOW}   > Source media lookups will be DISABLED.{Colors.RESET}")
+            print(f"{Colors.YELLOW}   > The gallery will still function normally.{Colors.RESET}\n")
     
     # Initialize the gallery
     initialize_gallery()
