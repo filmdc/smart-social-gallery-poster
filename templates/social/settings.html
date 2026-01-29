@@ -417,6 +417,21 @@
             {% endif %}
         </div>
 
+        <!-- Categories Management -->
+        {% if current_user.can_post_without_approval %}
+        <div class="section">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h2 style="margin-bottom:0;">Programs & Campaigns</h2>
+                <a href="{{ url_for('social.categories') }}" class="btn btn-secondary btn-sm">
+                    Manage Categories
+                </a>
+            </div>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">
+                Organize media by organizational programs and marketing campaigns.
+            </p>
+        </div>
+        {% endif %}
+
         <!-- User Management -->
         <div class="section">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">

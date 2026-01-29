@@ -191,7 +191,7 @@ def key_to_path(key):
     except Exception: return None
 
 # --- DERIVED SETTINGS ---
-DB_SCHEMA_VERSION = 26
+DB_SCHEMA_VERSION = 27
 THUMBNAIL_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, THUMBNAIL_CACHE_FOLDER_NAME)
 SQLITE_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, SQLITE_CACHE_FOLDER_NAME)
 DATABASE_FILE = os.path.join(SQLITE_CACHE_DIR, DATABASE_FILENAME)
@@ -952,9 +952,30 @@ def init_db(conn=None):
             last_scanned REAL DEFAULT 0,
             models TEXT DEFAULT '[]',
             loras TEXT DEFAULT '[]',
-            input_files TEXT DEFAULT '[]'
+            input_files TEXT DEFAULT '[]',
+            source_type TEXT DEFAULT 'local',
+            sp_item_id TEXT,
+            sp_drive_id TEXT,
+            sp_original_path TEXT,
+            sp_sync_timestamp REAL,
+            original_path TEXT
         )
     ''')
+    # Create move history table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS file_move_history (
+            id TEXT PRIMARY KEY,
+            file_id TEXT NOT NULL,
+            from_path TEXT NOT NULL,
+            to_path TEXT NOT NULL,
+            moved_at REAL NOT NULL,
+            moved_by TEXT,
+            FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+        )
+    ''')
+    # Create index for efficient lookups
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_move_history_file_id ON file_move_history(file_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_files_sp_item_id ON files(sp_item_id)')
     conn.commit()
     if close_conn: conn.close()
     
@@ -1204,14 +1225,49 @@ def initialize_gallery():
 
             stored_version = conn.execute('PRAGMA user_version').fetchone()[0]
         except sqlite3.DatabaseError: stored_version = 0
+
+        # Run incremental migrations instead of full rebuild where possible
         if stored_version < DB_SCHEMA_VERSION:
-            print(f"INFO: DB version outdated ({stored_version} < {DB_SCHEMA_VERSION}). Rebuilding database...")
-            conn.execute('DROP TABLE IF EXISTS files')
-            init_db(conn)
-            full_sync_database(conn)
+            print(f"INFO: DB version outdated ({stored_version} < {DB_SCHEMA_VERSION}). Running migrations...")
+
+            # Migration to version 27: Add file origin tracking columns
+            if stored_version < 27:
+                cursor = conn.execute("PRAGMA table_info(files)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                new_columns = [
+                    ('source_type', "TEXT DEFAULT 'local'"),
+                    ('sp_item_id', 'TEXT'),
+                    ('sp_drive_id', 'TEXT'),
+                    ('sp_original_path', 'TEXT'),
+                    ('sp_sync_timestamp', 'REAL'),
+                    ('original_path', 'TEXT'),
+                ]
+                for col_name, col_type in new_columns:
+                    if col_name not in columns:
+                        print(f"INFO: Adding '{col_name}' column to files table...")
+                        conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
+
+                # Create move history table
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS file_move_history (
+                        id TEXT PRIMARY KEY,
+                        file_id TEXT NOT NULL,
+                        from_path TEXT NOT NULL,
+                        to_path TEXT NOT NULL,
+                        moved_at REAL NOT NULL,
+                        moved_by TEXT,
+                        FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+                    )
+                ''')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_move_history_file_id ON file_move_history(file_id)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_files_sp_item_id ON files(sp_item_id)')
+                conn.commit()
+                print("INFO: Migration to v27 complete (file origin tracking).")
+
             conn.execute(f'PRAGMA user_version = {DB_SCHEMA_VERSION}')
             conn.commit()
-            print("INFO: Rebuild complete.")
+            print("INFO: Database migrations complete.")
         else:
             print(f"INFO: DB version ({stored_version}) is up to date. Starting normally.")
 
@@ -1242,7 +1298,7 @@ def initialize_gallery():
                 'SHAREPOINT_LOCAL_CACHE_DIR',
                 os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
             )
-            start_background_sync(sp_cache_dir)
+            start_background_sync(sp_cache_dir, db_path=DATABASE_FILE)
             print(f"{Colors.GREEN}INFO: SharePoint integration enabled (cache: {sp_cache_dir}).{Colors.RESET}")
         else:
             print(f"INFO: SharePoint not configured (set SHAREPOINT_* env vars to enable).")
@@ -1795,11 +1851,25 @@ def move_batch():
     if not all([file_ids, dest_key, dest_key in folders]):
         return jsonify({'status': 'error', 'message': 'Invalid data provided.'}), 400
     moved_count, renamed_count, failed_files, dest_path_folder = 0, 0, [], folders[dest_key]['path']
+
+    # Get current user ID if authenticated (for move history)
+    moved_by_user_id = None
+    if SOCIAL_FEATURES_ENABLED:
+        try:
+            from flask_login import current_user
+            if current_user.is_authenticated:
+                moved_by_user_id = current_user.id
+        except Exception:
+            pass
+
     with get_db_connection() as conn:
         for file_id in file_ids:
             source_path = None
             try:
-                file_info = conn.execute("SELECT path, name FROM files WHERE id = ?", (file_id,)).fetchone()
+                file_info = conn.execute(
+                    "SELECT path, name, original_path, source_type, sp_item_id, sp_drive_id, sp_original_path, sp_sync_timestamp FROM files WHERE id = ?",
+                    (file_id,)
+                ).fetchone()
                 if not file_info:
                     failed_files.append(f"ID {file_id} not found in DB")
                     continue
@@ -1813,7 +1883,26 @@ def move_batch():
                 if final_filename != source_filename: renamed_count += 1
                 shutil.move(source_path, final_dest_path)
                 new_id = hashlib.md5(final_dest_path.encode()).hexdigest()
-                conn.execute("UPDATE files SET id = ?, path = ?, name = ? WHERE id = ?", (new_id, final_dest_path, final_filename, file_id))
+
+                # Preserve origin metadata and set original_path if not already set
+                original_path = file_info['original_path'] or source_path
+                conn.execute("""
+                    UPDATE files SET
+                        id = ?,
+                        path = ?,
+                        name = ?,
+                        original_path = ?
+                    WHERE id = ?
+                """, (new_id, final_dest_path, final_filename, original_path, file_id))
+
+                # Log move history
+                move_history_id = str(uuid.uuid4())
+                now = time.time()
+                conn.execute("""
+                    INSERT INTO file_move_history (id, file_id, from_path, to_path, moved_at, moved_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (move_history_id, new_id, source_path, final_dest_path, now, moved_by_user_id))
+
                 moved_count += 1
             except Exception as e:
                 filename_for_error = os.path.basename(source_path) if source_path else f"ID {file_id}"

@@ -265,11 +265,59 @@ def download_sharepoint_file(drive_id, item_id, local_path):
     return False
 
 
+def _file_exists_by_sp_item_id(db_path, sp_item_id):
+    """Check if a file with this SharePoint item ID exists in the database."""
+    if not db_path:
+        return False, None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, path FROM files WHERE sp_item_id = ?",
+            (sp_item_id,)
+        ).fetchone()
+        conn.close()
+        if row:
+            return True, row['path']
+        return False, None
+    except Exception as e:
+        logger.warning(f"Error checking for existing file: {e}")
+        return False, None
+
+
+def _record_sharepoint_origin(db_path, local_path, sp_file):
+    """Record SharePoint origin metadata for a synced file."""
+    if not db_path:
+        return
+    try:
+        import sqlite3
+        file_id = hashlib.md5(local_path.encode()).hexdigest()
+        now = time.time()
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            UPDATE files SET
+                source_type = 'sharepoint',
+                sp_item_id = ?,
+                sp_drive_id = ?,
+                sp_original_path = ?,
+                sp_sync_timestamp = ?,
+                original_path = COALESCE(original_path, path)
+            WHERE id = ?
+        """, (sp_file['sp_item_id'], sp_file['drive_id'], sp_file['path'], now, file_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Error recording SharePoint origin: {e}")
+
+
 def sync_sharepoint_to_local(cache_dir, db_path=None):
     """
     Sync SharePoint document library files to a local cache directory.
 
     Downloads new/updated files and returns the list of local file paths.
+    If a file with the same SharePoint item ID already exists in the database
+    (even if moved to a different location), it will NOT be re-downloaded.
 
     Args:
         cache_dir: Local directory for cached SharePoint files
@@ -284,13 +332,25 @@ def sync_sharepoint_to_local(cache_dir, db_path=None):
     os.makedirs(cache_dir, exist_ok=True)
     sp_files = list_sharepoint_files()
     synced = []
+    skipped_moved = 0
 
     for sp_file in sp_files:
+        # Check if this SharePoint file already exists in the database (possibly moved)
+        exists, existing_path = _file_exists_by_sp_item_id(db_path, sp_file['sp_item_id'])
+        if exists:
+            # File was already synced and possibly moved - don't re-download
+            if existing_path and os.path.exists(existing_path):
+                synced.append(existing_path)
+                skipped_moved += 1
+                continue
+            # File record exists but physical file is gone - allow re-download
+            # This handles the case where a user deleted the local file
+
         # Build local path preserving folder structure
         local_path = os.path.join(cache_dir, sp_file['path'].replace('/', os.sep))
         local_dir = os.path.dirname(local_path)
 
-        # Check if file needs updating
+        # Check if file needs updating at the cache location
         needs_download = True
         if os.path.exists(local_path):
             local_size = os.path.getsize(local_path)
@@ -306,11 +366,39 @@ def sync_sharepoint_to_local(cache_dir, db_path=None):
             )
             if success:
                 synced.append(local_path)
+                # Record origin metadata after next database scan picks up the file
+                # We'll schedule this to happen after the file is in the database
+                _pending_origin_records[local_path] = sp_file
                 logger.info(f"Synced: {sp_file['path']}")
         else:
             synced.append(local_path)
+            # Ensure origin metadata is recorded for existing cache files
+            _pending_origin_records[local_path] = sp_file
+
+    if skipped_moved > 0:
+        logger.info(f"Skipped {skipped_moved} files already synced and moved")
 
     return synced
+
+
+# Pending origin records to be applied after database scan
+_pending_origin_records = {}
+
+
+def apply_pending_origin_records(db_path):
+    """Apply pending SharePoint origin records to files now in the database."""
+    global _pending_origin_records
+    if not _pending_origin_records:
+        return
+
+    applied = 0
+    for local_path, sp_file in list(_pending_origin_records.items()):
+        _record_sharepoint_origin(db_path, local_path, sp_file)
+        applied += 1
+        del _pending_origin_records[local_path]
+
+    if applied:
+        logger.info(f"Applied {applied} SharePoint origin records")
 
 
 def list_sharepoint_folders():
@@ -361,8 +449,14 @@ def _list_subfolders(drive_id, folder_path, folders_list, token):
             _list_subfolders(drive_id, child_path, folders_list, token)
 
 
-def start_background_sync(cache_dir, interval=None):
-    """Start a background thread that periodically syncs SharePoint files."""
+def start_background_sync(cache_dir, interval=None, db_path=None):
+    """Start a background thread that periodically syncs SharePoint files.
+
+    Args:
+        cache_dir: Local directory for cached SharePoint files
+        interval: Sync interval in seconds (default: SHAREPOINT_SYNC_INTERVAL)
+        db_path: Database path for tracking file origins
+    """
     global _sync_thread
     if not sharepoint_available():
         return
@@ -376,7 +470,10 @@ def start_background_sync(cache_dir, interval=None):
     def sync_loop():
         while not _stop_event.is_set():
             try:
-                sync_sharepoint_to_local(cache_dir)
+                sync_sharepoint_to_local(cache_dir, db_path=db_path)
+                # Apply pending origin records after sync
+                if db_path:
+                    apply_pending_origin_records(db_path)
             except Exception as e:
                 logger.error(f"SharePoint sync error: {e}")
             _stop_event.wait(sync_interval)
