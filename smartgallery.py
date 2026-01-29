@@ -130,6 +130,20 @@ DELETE_TO = os.environ.get('DELETE_TO', None)
 
 # External workflow tool URL (e.g., ComfyUI). Used for "send to" feature.
 COMFYUI_URL = os.environ.get('COMFYUI_URL', 'http://127.0.0.1:8188')
+
+
+# --- CONSOLE STYLING (defined early for use in validation messages) ---
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+
+
 if DELETE_TO and DELETE_TO.strip():
     DELETE_TO = DELETE_TO.strip()
     TRASH_FOLDER = os.path.join(DELETE_TO, 'SmartAssetGallery')
@@ -200,17 +214,6 @@ SMASHCUT_OUTPUT_DIR = os.path.join(BASE_SMARTGALLERY_PATH, SMASHCUT_FOLDER_NAME)
 PROTECTED_FOLDER_KEYS = {path_to_key(f) for f in SPECIAL_FOLDERS}
 PROTECTED_FOLDER_KEYS.add('_root_')
 
-
-# --- CONSOLE STYLING ---
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
 
 def print_configuration():
     """Prints the current configuration in a neat, aligned table."""
