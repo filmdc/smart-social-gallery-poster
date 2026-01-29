@@ -3125,6 +3125,22 @@ def show_ffmpeg_warning():
         print(f"{Colors.YELLOW}{msg}{Colors.RESET}")
         print(f"{Colors.YELLOW}{Colors.BOLD}" + "="*70 + f"{Colors.RESET}\n")
 
+
+# --- AUTO-INITIALIZATION FOR WSGI ---
+# Initialize gallery on module import (for gunicorn, uwsgi, etc.)
+# This ensures social features and authentication work in production.
+_gallery_initialized = False
+
+def _ensure_initialized():
+    global _gallery_initialized
+    if not _gallery_initialized:
+        initialize_gallery()
+        _gallery_initialized = True
+
+# Initialize when module is imported (required for WSGI servers)
+_ensure_initialized()
+
+
 if __name__ == '__main__':
 
     print_startup_banner()
@@ -3153,8 +3169,8 @@ if __name__ == '__main__':
             print(f"{Colors.YELLOW}   > Source media lookups will be DISABLED.{Colors.RESET}")
             print(f"{Colors.YELLOW}   > The gallery will still function normally.{Colors.RESET}\n")
     
-    # Initialize the gallery
-    initialize_gallery()
+    # Ensure gallery is initialized (may already be done on module import)
+    _ensure_initialized()
     
     # --- CHECK: FFMPEG WARNING ---
     if not FFPROBE_EXECUTABLE_PATH:
