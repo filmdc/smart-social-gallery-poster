@@ -7,7 +7,7 @@ tables and schema versioning via a social_meta table.
 
 import sqlite3
 
-SOCIAL_SCHEMA_VERSION = 4
+SOCIAL_SCHEMA_VERSION = 5
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS social_meta (
@@ -159,6 +159,21 @@ CREATE TABLE IF NOT EXISTS file_campaigns (
     FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
     FOREIGN KEY (assigned_by) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS sharepoint_sync_folders (
+    id TEXT PRIMARY KEY,
+    sp_folder_path TEXT NOT NULL,
+    sp_folder_name TEXT NOT NULL,
+    local_folder_name TEXT NOT NULL,
+    include_subfolders INTEGER NOT NULL DEFAULT 1,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    last_sync_at REAL,
+    last_sync_count INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    created_by TEXT,
+    UNIQUE(sp_folder_path),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
 """
 
 
@@ -308,6 +323,26 @@ def _run_migrations(conn, from_version, to_version):
                 UNIQUE(file_id, campaign_id),
                 FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
                 FOREIGN KEY (assigned_by) REFERENCES users(id)
+            )
+        """)
+        conn.commit()
+
+    if from_version < 5:
+        # Add sharepoint_sync_folders table for selective folder sync
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sharepoint_sync_folders (
+                id TEXT PRIMARY KEY,
+                sp_folder_path TEXT NOT NULL,
+                sp_folder_name TEXT NOT NULL,
+                local_folder_name TEXT NOT NULL,
+                include_subfolders INTEGER NOT NULL DEFAULT 1,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                last_sync_at REAL,
+                last_sync_count INTEGER DEFAULT 0,
+                created_at REAL NOT NULL,
+                created_by TEXT,
+                UNIQUE(sp_folder_path),
+                FOREIGN KEY (created_by) REFERENCES users(id)
             )
         """)
         conn.commit()

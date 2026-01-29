@@ -1306,19 +1306,146 @@ def register_routes(bp, db_path):
     @bp.route('/sharepoint/sync', methods=['POST'])
     @admin_required
     def sharepoint_sync():
-        """Trigger a manual SharePoint sync."""
-        from social.sharepoint import sharepoint_available, sync_sharepoint_to_local
+        """Trigger a manual SharePoint sync of configured folders."""
+        from social.sharepoint import sharepoint_available, sync_configured_folders
+        from smartgallery import BASE_OUTPUT_PATH, DB_PATH
         if not sharepoint_available():
             return jsonify({'error': 'SharePoint not configured'}), 400
         try:
-            cache_dir = os.environ.get('SHAREPOINT_LOCAL_CACHE_DIR', '')
-            if not cache_dir:
-                from smartgallery import BASE_SMARTGALLERY_PATH
-                cache_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.sharepoint_cache')
-            synced = sync_sharepoint_to_local(cache_dir)
-            return jsonify({'synced_count': len(synced), 'files': synced[:50]})
+            results = sync_configured_folders(BASE_OUTPUT_PATH, _db_path, DB_PATH)
+            if 'error' in results:
+                return jsonify({'error': results['error']}), 500
+            total_synced = sum(r.get('synced', 0) for r in results.values())
+            return jsonify({'synced_count': total_synced, 'folders': results})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    @bp.route('/sharepoint/sync-folders', methods=['GET'])
+    @admin_required
+    def list_sync_folders():
+        """List configured SharePoint sync folders."""
+        conn = get_social_db(_db_path)
+        try:
+            rows = conn.execute(
+                "SELECT * FROM sharepoint_sync_folders ORDER BY local_folder_name"
+            ).fetchall()
+            folders = []
+            for row in rows:
+                folders.append({
+                    'id': row['id'],
+                    'sp_folder_path': row['sp_folder_path'],
+                    'sp_folder_name': row['sp_folder_name'],
+                    'local_folder_name': row['local_folder_name'],
+                    'include_subfolders': bool(row['include_subfolders']),
+                    'is_enabled': bool(row['is_enabled']),
+                    'last_sync_at': row['last_sync_at'],
+                    'last_sync_count': row['last_sync_count'],
+                })
+            return jsonify({'folders': folders})
+        finally:
+            conn.close()
+
+    @bp.route('/sharepoint/sync-folders', methods=['POST'])
+    @admin_required
+    def add_sync_folder():
+        """Add a SharePoint folder to sync."""
+        import uuid
+        import time
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        sp_folder_path = data.get('sp_folder_path', '').strip()
+        sp_folder_name = data.get('sp_folder_name', '').strip()
+        local_folder_name = data.get('local_folder_name', '').strip()
+        include_subfolders = data.get('include_subfolders', True)
+
+        if not sp_folder_name:
+            return jsonify({'error': 'Folder name is required'}), 400
+        if not local_folder_name:
+            # Default to SharePoint folder name with SP prefix
+            local_folder_name = f"SP-{sp_folder_name}"
+
+        conn = get_social_db(_db_path)
+        try:
+            # Check if already configured
+            existing = conn.execute(
+                "SELECT id FROM sharepoint_sync_folders WHERE sp_folder_path = ?",
+                (sp_folder_path,)
+            ).fetchone()
+            if existing:
+                return jsonify({'error': 'This SharePoint folder is already configured'}), 400
+
+            folder_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO sharepoint_sync_folders
+                (id, sp_folder_path, sp_folder_name, local_folder_name, include_subfolders, is_enabled, created_at, created_by)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            """, (folder_id, sp_folder_path, sp_folder_name, local_folder_name,
+                  1 if include_subfolders else 0, time.time(), current_user.id))
+            conn.commit()
+
+            return jsonify({
+                'success': True,
+                'id': folder_id,
+                'local_folder_name': local_folder_name
+            })
+        finally:
+            conn.close()
+
+    @bp.route('/sharepoint/sync-folders/<folder_id>', methods=['DELETE'])
+    @admin_required
+    def remove_sync_folder(folder_id):
+        """Remove a SharePoint sync folder configuration."""
+        conn = get_social_db(_db_path)
+        try:
+            result = conn.execute(
+                "DELETE FROM sharepoint_sync_folders WHERE id = ?",
+                (folder_id,)
+            )
+            conn.commit()
+            if result.rowcount == 0:
+                return jsonify({'error': 'Folder not found'}), 404
+            return jsonify({'success': True})
+        finally:
+            conn.close()
+
+    @bp.route('/sharepoint/sync-folders/<folder_id>', methods=['PATCH'])
+    @admin_required
+    def update_sync_folder(folder_id):
+        """Update a SharePoint sync folder configuration."""
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        conn = get_social_db(_db_path)
+        try:
+            updates = []
+            params = []
+
+            if 'local_folder_name' in data:
+                updates.append("local_folder_name = ?")
+                params.append(data['local_folder_name'])
+            if 'include_subfolders' in data:
+                updates.append("include_subfolders = ?")
+                params.append(1 if data['include_subfolders'] else 0)
+            if 'is_enabled' in data:
+                updates.append("is_enabled = ?")
+                params.append(1 if data['is_enabled'] else 0)
+
+            if not updates:
+                return jsonify({'error': 'No valid fields to update'}), 400
+
+            params.append(folder_id)
+            conn.execute(
+                f"UPDATE sharepoint_sync_folders SET {', '.join(updates)} WHERE id = ?",
+                params
+            )
+            conn.commit()
+            return jsonify({'success': True})
+        finally:
+            conn.close()
 
     # =========================================================================
     # USER PREFERENCES ROUTES

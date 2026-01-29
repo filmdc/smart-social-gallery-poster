@@ -266,6 +266,21 @@
             font-weight: 600;
         }
 
+        .sp-folder-badge {
+            background: #038387;
+            color: white;
+            font-size: 0.55rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 700;
+            margin-left: 5px;
+            vertical-align: middle;
+            letter-spacing: 0.02em;
+        }
+        .folder-item.active .sp-folder-badge {
+            background: rgba(255,255,255,0.3);
+        }
+
         .toggle-btn {
             position: absolute;
             left: 0;
@@ -2622,6 +2637,7 @@
         const foldersData = {{ folders | tojson }};
         const currentFolderInfo = {{ current_folder_info | tojson }};
         const protectedFolderKeys = {{ protected_folder_keys | tojson }};
+        const sharepointFolderNames = {{ sharepoint_folders | default([]) | tojson }};
         const initialFiles = {{ files | tojson }};
         let totalFiles = {{ total_files }};
         let totalFolderFiles = {{ total_folder_files }};
@@ -2699,11 +2715,13 @@
 
             const folderDisplayName = folder.display_name;
             const folderIcon = '📁';
+            const isSharePointFolder = sharepointFolderNames.includes(folderDisplayName);
+            const spBadge = isSharePointFolder ? '<span class="sp-folder-badge" title="Synced from SharePoint">SP</span>' : '';
             let itemHTML;
             if (isMovePanel) {
-                itemHTML = ` <div class="folder-item"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}</span> <button class="move-here-btn" data-folder-key="${folderKey}" title="Move here" ${folderKey === currentFolderKey ? 'disabled' : ''}>➜</button> </div>`;
+                itemHTML = ` <div class="folder-item"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> <button class="move-here-btn" data-folder-key="${folderKey}" title="Move here" ${folderKey === currentFolderKey ? 'disabled' : ''}>➜</button> </div>`;
             } else {
-                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}</span> ${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<div class="folder-actions"> <button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderDisplayName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button> </div>` : ''} </div>`;
+                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> ${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<div class="folder-actions"> <button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderDisplayName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button> </div>` : ''} </div>`;
             }
             return `<li data-folder-key="${folderKey}" data-folder-name="${folderDisplayName.toLowerCase()}" class="${isCollapsed ? 'collapsed' : ''} ${!hasChildren ? 'no-children' : ''}">${itemHTML}${hasChildren ? `<ul>${childrenHTML}</ul>` : ''}</li>`;
         }

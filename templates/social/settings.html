@@ -281,6 +281,179 @@
             color: var(--favorite-color);
         }
         .sp-env-item span { color: var(--text-muted); font-size: 0.8rem; }
+
+        /* SharePoint Sync Folders */
+        .sp-sync-folders {
+            margin-top: 1.2rem;
+            border-top: 1px solid var(--glass-border);
+            padding-top: 1rem;
+        }
+        .sp-sync-folders h3 {
+            font-size: 0.9rem;
+            margin-bottom: 0.8rem;
+            color: var(--text-color);
+        }
+        .sp-folder-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .sp-folder-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+        }
+        .sp-folder-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+        .sp-folder-local {
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .sp-folder-local .sp-badge {
+            background: #038387;
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .sp-folder-remote {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+        .sp-folder-meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        .sp-folder-actions {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .sp-no-folders {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-style: italic;
+            padding: 0.5rem 0;
+        }
+
+        /* SharePoint Browser Modal */
+        .sp-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .sp-modal-overlay.active { display: flex; }
+        .sp-modal {
+            background: var(--surface-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .sp-modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sp-modal-header h3 { margin: 0; font-size: 1.1rem; }
+        .sp-modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .sp-modal-close:hover { color: var(--text-color); }
+        .sp-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 1.5rem;
+        }
+        .sp-browser-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .sp-browser-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.5rem 0.8rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .sp-browser-item:hover { border-color: var(--primary-color); }
+        .sp-browser-item.selected { border-color: var(--success-color); background: rgba(32,201,151,0.1); }
+        .sp-browser-item .folder-icon { font-size: 1.2rem; }
+        .sp-browser-item .folder-name { flex: 1; font-size: 0.9rem; }
+        .sp-browser-item .folder-count { font-size: 0.75rem; color: var(--text-muted); }
+        .sp-modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--glass-border);
+        }
+        .sp-add-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+        .sp-add-form label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .sp-add-form input {
+            width: 100%;
+            padding: 0.5rem 0.8rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        .sp-add-form .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .sp-add-form .checkbox-row input[type="checkbox"] {
+            width: auto;
+        }
+        .sp-modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+        .sp-loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
     </style>
 </head>
 <body>
@@ -369,14 +542,6 @@
                     <span class="sp-config-label">Sync Interval</span>
                     <span class="sp-config-value">{{ sp_sync_interval }}s ({{ (sp_sync_interval / 60)|round(0)|int }} min)</span>
                 </div>
-                <div class="sp-config-item">
-                    <span class="sp-config-label">Cached Files</span>
-                    <span class="sp-config-value" id="sp-cache-count">{{ sp_cache_count }}</span>
-                </div>
-                <div class="sp-config-item">
-                    <span class="sp-config-label">Cache Location</span>
-                    <span class="sp-config-value sp-path">{{ sp_cache_dir }}</span>
-                </div>
             </div>
 
             <div class="sp-actions">
@@ -384,6 +549,18 @@
                 <button class="btn btn-primary" id="sp-sync-btn" onclick="syncSharePoint()">Sync Now</button>
             </div>
             <div id="sp-result" class="sp-result" style="display:none;"></div>
+
+            <!-- Sync Folders Section -->
+            <div class="sp-sync-folders">
+                <h3>Synced Folders</h3>
+                <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:0.8rem;">
+                    Select folders from SharePoint to sync directly into your gallery.
+                </p>
+                <div class="sp-folder-list" id="sp-folder-list">
+                    <div class="sp-loading">Loading configured folders...</div>
+                </div>
+                <button class="btn btn-secondary" onclick="openSpFolderBrowser()">+ Add Folder from SharePoint</button>
+            </div>
 
             {% else %}
             <div class="sp-status-row">
@@ -415,6 +592,43 @@
                 </div>
             </div>
             {% endif %}
+        </div>
+
+        <!-- SharePoint Folder Browser Modal -->
+        <div id="sp-folder-modal" class="sp-modal-overlay">
+            <div class="sp-modal">
+                <div class="sp-modal-header">
+                    <h3>Add SharePoint Folder</h3>
+                    <button type="button" class="sp-modal-close" onclick="closeSpFolderBrowser()">&times;</button>
+                </div>
+                <div class="sp-modal-body">
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">
+                        Select a folder to sync to your gallery:
+                    </p>
+                    <div class="sp-browser-list" id="sp-browser-list">
+                        <div class="sp-loading">Loading folders from SharePoint...</div>
+                    </div>
+                </div>
+                <div class="sp-modal-footer" id="sp-modal-footer" style="display:none;">
+                    <div class="sp-add-form">
+                        <div>
+                            <label>Selected: <strong id="sp-selected-name">-</strong></label>
+                        </div>
+                        <div>
+                            <label for="sp-local-name">Gallery Folder Name</label>
+                            <input type="text" id="sp-local-name" placeholder="e.g., Marketing Assets">
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="sp-include-subfolders" checked>
+                            <label for="sp-include-subfolders" style="margin:0;">Include subfolders</label>
+                        </div>
+                        <div class="sp-modal-actions">
+                            <button class="btn btn-secondary" onclick="closeSpFolderBrowser()">Cancel</button>
+                            <button class="btn btn-primary" onclick="addSelectedSpFolder()">Add Folder</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Categories Management -->
@@ -585,9 +799,15 @@
                 result.textContent = 'Sync error: ' + data.error;
             } else {
                 result.className = 'sp-result success';
-                result.textContent = 'Sync complete. ' + data.synced_count + ' file(s) in cache.';
-                const countEl = document.getElementById('sp-cache-count');
-                if (countEl) countEl.textContent = data.synced_count;
+                let msg = 'Sync complete. ' + data.synced_count + ' file(s) synced.';
+                if (data.folders) {
+                    const folderResults = Object.entries(data.folders)
+                        .map(([name, info]) => `${name}: ${info.synced}`)
+                        .join(', ');
+                    if (folderResults) msg += ' (' + folderResults + ')';
+                }
+                result.textContent = msg;
+                loadSyncFolders(); // Refresh the folder list
             }
         }).catch(err => {
             result.className = 'sp-result error';
@@ -597,6 +817,183 @@
             btn.textContent = 'Sync Now';
         });
     }
+
+    // SharePoint Sync Folder Management
+    let spSelectedFolder = null;
+    let spFolders = [];
+
+    function loadSyncFolders() {
+        const list = document.getElementById('sp-folder-list');
+        if (!list) return;
+
+        fetch('/galleryout/social/sharepoint/sync-folders')
+        .then(r => r.json()).then(data => {
+            if (data.folders && data.folders.length > 0) {
+                list.innerHTML = data.folders.map(f => {
+                    const lastSync = f.last_sync_at
+                        ? new Date(f.last_sync_at * 1000).toLocaleString()
+                        : 'Never';
+                    return `
+                        <div class="sp-folder-item" id="sync-folder-${f.id}">
+                            <div class="sp-folder-info">
+                                <div class="sp-folder-local">
+                                    <span class="sp-badge">SP</span>
+                                    ${f.local_folder_name}
+                                    ${f.include_subfolders ? '' : '<span style="font-size:0.7rem;color:var(--text-muted);">(no subs)</span>'}
+                                </div>
+                                <div class="sp-folder-remote">${f.sp_folder_path || '(root)'}</div>
+                                <div class="sp-folder-meta">Last sync: ${lastSync} | Files: ${f.last_sync_count || 0}</div>
+                            </div>
+                            <div class="sp-folder-actions">
+                                <button class="btn btn-danger btn-sm" onclick="removeSyncFolder('${f.id}')">Remove</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                list.innerHTML = '<p class="sp-no-folders">No folders configured. Add a folder from SharePoint to start syncing.</p>';
+            }
+        }).catch(err => {
+            list.innerHTML = '<p class="sp-no-folders" style="color:var(--danger-color);">Error loading folders</p>';
+        });
+    }
+
+    function openSpFolderBrowser() {
+        document.getElementById('sp-folder-modal').classList.add('active');
+        document.getElementById('sp-modal-footer').style.display = 'none';
+        spSelectedFolder = null;
+        loadSpFolders();
+    }
+
+    function closeSpFolderBrowser() {
+        document.getElementById('sp-folder-modal').classList.remove('active');
+    }
+
+    function loadSpFolders() {
+        const list = document.getElementById('sp-browser-list');
+        list.innerHTML = '<div class="sp-loading">Loading folders from SharePoint...</div>';
+
+        fetch('/galleryout/social/sharepoint/folders')
+        .then(r => r.json()).then(data => {
+            spFolders = data.folders || [];
+            if (spFolders.length === 0) {
+                // Add root folder option
+                spFolders = [{name: '(Document Library Root)', path: '', item_count: 0}];
+            } else {
+                // Add root option at the start
+                spFolders.unshift({name: '(Document Library Root)', path: '', item_count: 0});
+            }
+            renderSpFolders();
+        }).catch(err => {
+            list.innerHTML = '<div class="sp-loading" style="color:var(--danger-color);">Error loading folders: ' + err + '</div>';
+        });
+    }
+
+    function renderSpFolders() {
+        const list = document.getElementById('sp-browser-list');
+        list.innerHTML = spFolders.map(f => `
+            <div class="sp-browser-item" data-path="${f.path}" data-name="${f.name}" onclick="selectSpFolder(this)">
+                <span class="folder-icon">📁</span>
+                <span class="folder-name">${f.path || f.name}</span>
+                <span class="folder-count">${f.item_count} items</span>
+            </div>
+        `).join('');
+    }
+
+    function selectSpFolder(el) {
+        // Clear previous selection
+        document.querySelectorAll('.sp-browser-item').forEach(e => e.classList.remove('selected'));
+        el.classList.add('selected');
+
+        spSelectedFolder = {
+            path: el.dataset.path,
+            name: el.dataset.name
+        };
+
+        // Show footer with config options
+        document.getElementById('sp-modal-footer').style.display = 'block';
+        document.getElementById('sp-selected-name').textContent = spSelectedFolder.path || '(Root)';
+        // Suggest a local folder name
+        const suggestedName = spSelectedFolder.path
+            ? 'SP-' + spSelectedFolder.path.split('/').pop()
+            : 'SP-' + '{{ sp_library }}';
+        document.getElementById('sp-local-name').value = suggestedName;
+    }
+
+    function addSelectedSpFolder() {
+        if (!spSelectedFolder) return;
+
+        const localName = document.getElementById('sp-local-name').value.trim();
+        const includeSubfolders = document.getElementById('sp-include-subfolders').checked;
+
+        if (!localName) {
+            alert('Please enter a gallery folder name');
+            return;
+        }
+
+        fetch('/galleryout/social/sharepoint/sync-folders', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                sp_folder_path: spSelectedFolder.path,
+                sp_folder_name: spSelectedFolder.name,
+                local_folder_name: localName,
+                include_subfolders: includeSubfolders
+            })
+        })
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                closeSpFolderBrowser();
+                loadSyncFolders();
+                // Show success message
+                const result = document.getElementById('sp-result');
+                result.style.display = 'block';
+                result.className = 'sp-result success';
+                result.textContent = 'Folder added: ' + data.local_folder_name + '. Click "Sync Now" to download files.';
+            } else {
+                alert(data.error || 'Error adding folder');
+            }
+        }).catch(err => {
+            alert('Error: ' + err);
+        });
+    }
+
+    function removeSyncFolder(folderId) {
+        if (!confirm('Remove this sync folder configuration? (Files already downloaded will remain in the gallery)')) return;
+
+        fetch('/galleryout/social/sharepoint/sync-folders/' + folderId, {method: 'DELETE'})
+        .then(r => r.json()).then(data => {
+            if (data.success) {
+                document.getElementById('sync-folder-' + folderId).remove();
+                // Check if list is now empty
+                const list = document.getElementById('sp-folder-list');
+                if (!list.querySelector('.sp-folder-item')) {
+                    list.innerHTML = '<p class="sp-no-folders">No folders configured. Add a folder from SharePoint to start syncing.</p>';
+                }
+            } else {
+                alert(data.error || 'Error removing folder');
+            }
+        }).catch(err => {
+            alert('Error: ' + err);
+        });
+    }
+
+    // Load sync folders on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.getElementById('sp-folder-list')) {
+            loadSyncFolders();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSpFolderBrowser();
+    });
+
+    // Close modal on overlay click
+    document.getElementById('sp-folder-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'sp-folder-modal') closeSpFolderBrowser();
+    });
 
     function addUser(e) {
         e.preventDefault();
