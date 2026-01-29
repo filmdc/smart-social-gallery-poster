@@ -1357,14 +1357,34 @@ def gallery_redirect_base():
 def api_get_folders():
     """API endpoint to get all folders for the file browser."""
     folders = get_dynamic_folder_config()
+
+    # Get folders that actually contain files (not just subfolders)
+    folders_with_files = set()
+    with get_db_connection() as conn:
+        file_paths = conn.execute('SELECT DISTINCT path FROM files').fetchall()
+        for row in file_paths:
+            parent_dir = os.path.dirname(row['path'])
+            folders_with_files.add(os.path.normpath(parent_dir))
+
     folder_list = []
     for key, info in folders.items():
+        folder_path_norm = os.path.normpath(info['path'])
+        # Only include folders that have files directly in them
+        if folder_path_norm not in folders_with_files:
+            continue
+
+        # Use relative path for display to distinguish folders with same name
+        display_name = info.get('relative_path', info['display_name'])
+        if not display_name or display_name == '':
+            display_name = info['display_name']
+
         folder_list.append({
             'key': key,
-            'name': info['display_name'],
+            'name': display_name,
             'path': info['path'],
             'parent': info.get('parent')
         })
+
     # Sort by name
     folder_list.sort(key=lambda x: x['name'].lower())
     return jsonify(folder_list)
