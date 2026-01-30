@@ -76,6 +76,7 @@ def _publish_post(post):
     conn = get_social_db(_db_path)
 
     try:
+        print(f"[PUBLISH] _publish_post starting for {post_id}")
         logger.info(f"Starting publish for post {post_id}")
 
         # Update post status to publishing
@@ -105,7 +106,14 @@ def _publish_post(post):
                 error_msg = "No platforms selected for this post. Please edit and select at least one platform."
             else:
                 # Platforms exist but none are pending - check if accounts still exist
-                error_msg = "No valid platforms to publish to. The connected accounts may have been removed."
+                # This happens when the social account was deleted but post_platforms still references it
+                error_msg = "No valid platforms to publish to. The connected account(s) may have been removed or disconnected."
+                # Store error on all platform entries
+                for plat in all_platforms:
+                    conn.execute(
+                        "UPDATE post_platforms SET status='failed', error_message=? WHERE id=?",
+                        (error_msg, plat['id'])
+                    )
 
             logger.error(f"Post {post_id} failed: {error_msg}")
             conn.execute("UPDATE posts SET status='failed', updated_at=? WHERE id=?",
@@ -258,10 +266,14 @@ def _refresh_expiring_tokens():
 
 def publish_post_now(post_id, db_path, app_secret_key):
     """Immediately publish a post in a background thread."""
+    print(f"[PUBLISH] publish_post_now called for post {post_id}")
+    logger.info(f"publish_post_now called for post {post_id}")
+
     conn = get_social_db(db_path)
     try:
         post = conn.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
         if not post:
+            print(f"[PUBLISH] Post {post_id} not found in database")
             return
         post_dict = dict(post)
     finally:
@@ -271,6 +283,7 @@ def publish_post_now(post_id, db_path, app_secret_key):
     _db_path = db_path
     _app_secret_key = app_secret_key
 
+    print(f"[PUBLISH] Starting background thread for post {post_id}")
     t = threading.Thread(target=_publish_post, args=(post_dict,), daemon=True)
     t.start()
 
