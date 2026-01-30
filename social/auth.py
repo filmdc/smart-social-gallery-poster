@@ -135,10 +135,13 @@ class User(UserMixin):
 
     @classmethod
     def get_by_email(cls, email, db_path):
-        """Get a user by their email address."""
+        """Get a user by their email address (case-insensitive)."""
+        if not email:
+            return None
         conn = get_social_db(db_path)
         try:
-            row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            # Normalize to lowercase since emails are stored lowercase
+            row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower(),)).fetchone()
             return cls.from_row(row)
         finally:
             conn.close()
