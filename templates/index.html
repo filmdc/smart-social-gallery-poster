@@ -665,28 +665,36 @@
             border: 1px solid var(--glass-border) !important;
             border-radius: 8px !important;
             backdrop-filter: blur(10px) !important;
+            height: 38px !important;
             min-height: 38px !important;
             max-height: 38px !important;
             overflow: hidden !important;
             padding: 4px 8px !important;
+            flex-wrap: nowrap !important;
+            cursor: pointer !important;
         }
 
+        /* Hide all selected items - show count instead */
         .ts-wrapper.multi .ts-control > .item {
-            background: var(--accent-color) !important;
-            color: white !important;
-            border: none !important;
-            padding: 2px 6px !important;
-            margin: 2px !important;
-            border-radius: 4px !important;
-            font-size: 0.75rem !important;
-            max-width: 80px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            display: none !important;
+        }
+
+        /* Show selection count via JavaScript-managed element */
+        .ts-selection-count {
+            display: inline-flex;
+            align-items: center;
+            background: var(--accent-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
             white-space: nowrap;
+            margin-right: 4px;
         }
 
         .ts-control input {
             min-width: 30px !important;
+            flex: 1 !important;
         }
 
         .ts-dropdown,
@@ -710,6 +718,11 @@
 
         .ts-dropdown .option {
             padding: 8px 12px !important;
+        }
+
+        .ts-dropdown .option.selected {
+            background: var(--accent-color) !important;
+            color: white !important;
         }
 
         #gallery-anchor {
@@ -4467,28 +4480,67 @@ async function showNodeSummary(event, fileId) {
             setupSidebarExpansion();
             appendFiles(initialFiles);
 
-            new TomSelect('#extension-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📄 Select extensions...' });
-            new TomSelect('#prefix-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏷️ Select prefixes...' });
-            new TomSelect('#media-type-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🎬 Select media types...' });
-            if (document.getElementById('program-select')) {
-                new TomSelect('#program-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏢 Select programs...' });
+            // Initialize TomSelect dropdowns with selection count display
+            function initTomSelectWithCount(selector, placeholder) {
+                const el = document.getElementById(selector);
+                if (!el) return null;
+
+                const ts = new TomSelect('#' + selector, {
+                    plugins: ['checkbox_options', 'clear_button'],
+                    placeholder: placeholder,
+                    onInitialize: function() {
+                        updateSelectionCount(this);
+                    },
+                    onItemAdd: function() {
+                        updateSelectionCount(this);
+                    },
+                    onItemRemove: function() {
+                        updateSelectionCount(this);
+                    },
+                    onClear: function() {
+                        updateSelectionCount(this);
+                    }
+                });
+                return ts;
             }
-            if (document.getElementById('campaign-select')) {
-                new TomSelect('#campaign-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📣 Select campaigns...' });
+
+            function updateSelectionCount(tsInstance) {
+                const control = tsInstance.control;
+                const count = tsInstance.items.length;
+
+                // Remove existing count element
+                const existing = control.querySelector('.ts-selection-count');
+                if (existing) existing.remove();
+
+                // Add count element if items are selected
+                if (count > 0) {
+                    const countEl = document.createElement('span');
+                    countEl.className = 'ts-selection-count';
+                    countEl.textContent = count + ' selected';
+                    control.insertBefore(countEl, control.querySelector('input'));
+                }
             }
+
+            initTomSelectWithCount('extension-select', '📄 Select extensions...');
+            initTomSelectWithCount('prefix-select', '🏷️ Select prefixes...');
+            initTomSelectWithCount('media-type-select', '🎬 Select media types...');
+            initTomSelectWithCount('program-select', '🏢 Select programs...');
+            initTomSelectWithCount('campaign-select', '📣 Select campaigns...');
 
             // View size slider functionality
             const viewSizeSlider = document.getElementById('view-size-slider');
-            const savedViewSize = localStorage.getItem('galleryViewSize');
-            if (savedViewSize) {
-                document.documentElement.style.setProperty('--gallery-column-size', savedViewSize + 'px');
-                viewSizeSlider.value = savedViewSize;
+            if (viewSizeSlider) {
+                const savedViewSize = localStorage.getItem('galleryViewSize');
+                if (savedViewSize) {
+                    document.documentElement.style.setProperty('--gallery-column-size', savedViewSize + 'px');
+                    viewSizeSlider.value = savedViewSize;
+                }
+                viewSizeSlider.addEventListener('input', (e) => {
+                    const size = e.target.value;
+                    document.documentElement.style.setProperty('--gallery-column-size', size + 'px');
+                    localStorage.setItem('galleryViewSize', size);
+                });
             }
-            viewSizeSlider.addEventListener('input', (e) => {
-                const size = e.target.value;
-                document.documentElement.style.setProperty('--gallery-column-size', size + 'px');
-                localStorage.setItem('galleryViewSize', size);
-            });
 
             const sidebar = document.querySelector('.sidebar');
             const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
