@@ -4,6 +4,7 @@ Scheduler for timed post publishing and token refresh.
 Uses APScheduler BackgroundScheduler running in-process.
 """
 
+import logging
 import time
 import threading
 
@@ -12,6 +13,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from social.models import get_social_db
 from social.oauth import decrypt_token, refresh_linkedin_token, refresh_facebook_token
 from social.posting import PLATFORM_PUBLISHERS
+
+logger = logging.getLogger(__name__)
 
 _scheduler = None
 _db_path = None
@@ -73,6 +76,8 @@ def _publish_post(post):
     conn = get_social_db(_db_path)
 
     try:
+        logger.info(f"Starting publish for post {post_id}")
+
         # Update post status to publishing
         conn.execute("UPDATE posts SET status = 'publishing', updated_at = ? WHERE id = ?",
                       (time.time(), post_id))
@@ -88,6 +93,26 @@ def _publish_post(post):
             (post_id,)
         ).fetchall()
 
+        # Check if any platforms are configured
+        if not platform_targets:
+            # Check if there are any post_platforms entries at all
+            all_platforms = conn.execute(
+                "SELECT pp.id, pp.status, pp.social_account_id FROM post_platforms pp WHERE pp.post_id = ?",
+                (post_id,)
+            ).fetchall()
+
+            if not all_platforms:
+                error_msg = "No platforms selected for this post. Please edit and select at least one platform."
+            else:
+                # Platforms exist but none are pending - check if accounts still exist
+                error_msg = "No valid platforms to publish to. The connected accounts may have been removed."
+
+            logger.error(f"Post {post_id} failed: {error_msg}")
+            conn.execute("UPDATE posts SET status='failed', updated_at=? WHERE id=?",
+                          (time.time(), post_id))
+            conn.commit()
+            return
+
         # Get media files for this post
         media_rows = conn.execute(
             "SELECT pm.*, f.path FROM post_media pm "
@@ -97,6 +122,8 @@ def _publish_post(post):
         ).fetchall()
         media_paths = [row['path'] for row in media_rows]
 
+        logger.info(f"Post {post_id}: {len(platform_targets)} platforms, {len(media_paths)} media files")
+
         all_published = True
         any_published = False
 
@@ -104,9 +131,11 @@ def _publish_post(post):
             platform = target['platform']
             publisher = PLATFORM_PUBLISHERS.get(platform)
             if not publisher:
+                error_msg = f"Unknown platform: {platform}"
+                logger.error(f"Post {post_id}: {error_msg}")
                 conn.execute(
                     "UPDATE post_platforms SET status='failed', error_message=? WHERE id=?",
-                    (f"Unknown platform: {platform}", target['id'])
+                    (error_msg, target['id'])
                 )
                 all_published = False
                 continue
@@ -117,7 +146,16 @@ def _publish_post(post):
 
             # Build account dict for publisher
             account = dict(target)
-            result = publisher(account, dict(post), media_paths, _app_secret_key)
+            try:
+                result = publisher(account, dict(post), media_paths, _app_secret_key)
+            except Exception as pub_err:
+                logger.exception(f"Post {post_id}: Exception in {platform} publisher")
+                result = {
+                    'status': 'failed',
+                    'error_message': f"Publisher error: {str(pub_err)}",
+                    'platform_post_id': None,
+                    'platform_url': None,
+                }
 
             now = time.time()
             conn.execute(
@@ -135,8 +173,10 @@ def _publish_post(post):
             conn.commit()
 
             if result['status'] == 'published':
+                logger.info(f"Post {post_id}: Successfully published to {platform}")
                 any_published = True
             else:
+                logger.error(f"Post {post_id}: Failed to publish to {platform}: {result.get('error_message')}")
                 all_published = False
 
         # Update overall post status
@@ -144,17 +184,27 @@ def _publish_post(post):
         if all_published and any_published:
             conn.execute("UPDATE posts SET status='published', published_at=?, updated_at=? WHERE id=?",
                           (now, now, post_id))
+            logger.info(f"Post {post_id}: All platforms published successfully")
         elif any_published:
             # Partial success - some platforms failed
             conn.execute("UPDATE posts SET status='published', published_at=?, updated_at=? WHERE id=?",
                           (now, now, post_id))
+            logger.warning(f"Post {post_id}: Partial success - some platforms failed")
         else:
             conn.execute("UPDATE posts SET status='failed', updated_at=? WHERE id=?",
                           (now, post_id))
+            logger.error(f"Post {post_id}: All platforms failed")
         conn.commit()
 
     except Exception as e:
+        error_msg = f"Publish error: {str(e)}"
+        logger.exception(f"Post {post_id}: Unexpected exception during publish")
         try:
+            # Store error message on any pending platforms
+            conn.execute(
+                "UPDATE post_platforms SET status='failed', error_message=? WHERE post_id=? AND status IN ('pending', 'publishing')",
+                (error_msg, post_id)
+            )
             conn.execute("UPDATE posts SET status='failed', updated_at=? WHERE id=?",
                           (time.time(), post_id))
             conn.commit()
