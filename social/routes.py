@@ -1434,10 +1434,10 @@ def register_routes(bp, db_path):
         """Trigger a manual SharePoint sync of configured folders."""
         try:
             from social.sharepoint import sharepoint_available, sync_configured_folders
-            from smartgallery import BASE_OUTPUT_PATH, DB_PATH
+            from smartgallery import BASE_OUTPUT_PATH, DATABASE_FILE
             if not sharepoint_available():
                 return jsonify({'error': 'SharePoint not configured'}), 400
-            results = sync_configured_folders(BASE_OUTPUT_PATH, _db_path, DB_PATH)
+            results = sync_configured_folders(BASE_OUTPUT_PATH, _db_path, DATABASE_FILE)
             if 'error' in results:
                 return jsonify({'error': results['error']}), 500
             total_synced = sum(r.get('synced', 0) for r in results.values())
