@@ -726,6 +726,70 @@
             </div>
         </div>
 
+        <!-- Email Configuration -->
+        <div class="section">
+            <h2>Email Configuration</h2>
+
+            {% if email_configured %}
+            <div class="sp-status-row">
+                <span class="sp-status connected">Configured</span>
+                <span style="color:var(--text-muted);font-size:0.85rem;">{{ email_host }}</span>
+            </div>
+
+            <div class="sp-config-grid">
+                <div class="sp-config-item">
+                    <span class="sp-config-label">From Address</span>
+                    <span class="sp-config-value">{{ email_from }}</span>
+                </div>
+                <div class="sp-config-item">
+                    <span class="sp-config-label">SMTP Server</span>
+                    <span class="sp-config-value">{{ email_host }}</span>
+                </div>
+            </div>
+
+            <div class="sp-actions">
+                <input type="email" id="test-email-address" placeholder="Enter email to test..."
+                       style="padding:0.5rem 0.8rem;background:var(--bg-color);border:1px solid var(--border-color);border-radius:6px;color:var(--text-color);font-size:0.85rem;width:250px;">
+                <button class="btn btn-secondary" id="email-test-btn" onclick="sendTestEmail()">Send Test Email</button>
+            </div>
+            <div id="email-result" class="sp-result" style="display:none;"></div>
+
+            {% else %}
+            <div class="sp-status-row">
+                <span class="sp-status not-configured">Not Configured</span>
+            </div>
+            <p style="color:var(--text-muted);font-size:0.9rem;margin:0.8rem 0 0.5rem;">
+                Set these environment variables to enable email functionality (password resets, notifications):
+            </p>
+            <div class="sp-env-list">
+                <div class="sp-env-item">
+                    <code>SMTP_HOST</code>
+                    <span>SMTP server address (e.g., smtp.gmail.com)</span>
+                </div>
+                <div class="sp-env-item">
+                    <code>SMTP_PORT</code>
+                    <span>SMTP port (default: 587)</span>
+                </div>
+                <div class="sp-env-item">
+                    <code>SMTP_USER</code>
+                    <span>SMTP username/email</span>
+                </div>
+                <div class="sp-env-item">
+                    <code>SMTP_PASSWORD</code>
+                    <span>SMTP password or app password</span>
+                </div>
+                <div class="sp-env-item">
+                    <code>SMTP_FROM_EMAIL</code>
+                    <span>From address (optional, defaults to SMTP_USER)</span>
+                </div>
+                <div class="sp-env-item">
+                    <code>SMTP_FROM_NAME</code>
+                    <span>From name (optional, default: Smart Asset Gallery)</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Categories Management -->
         {% if current_user.can_post_without_approval %}
         <div class="section">
@@ -1296,6 +1360,51 @@
     document.getElementById('sp-folder-modal')?.addEventListener('click', (e) => {
         if (e.target.id === 'sp-folder-modal') closeSpFolderBrowser();
     });
+
+    // Email test functionality
+    function sendTestEmail() {
+        const emailInput = document.getElementById('test-email-address');
+        const btn = document.getElementById('email-test-btn');
+        const result = document.getElementById('email-result');
+        const toEmail = emailInput.value.trim();
+
+        if (!toEmail) {
+            result.style.display = 'block';
+            result.className = 'sp-result error';
+            result.textContent = 'Please enter an email address';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        result.style.display = 'block';
+        result.className = 'sp-result info';
+        result.textContent = 'Sending test email...';
+
+        fetch('/galleryout/social/email/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({to_email: toEmail})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                result.className = 'sp-result success';
+                result.textContent = data.message || 'Test email sent successfully!';
+            } else {
+                result.className = 'sp-result error';
+                result.textContent = data.error || 'Failed to send test email';
+            }
+        })
+        .catch(err => {
+            result.className = 'sp-result error';
+            result.textContent = 'Error: ' + err;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Send Test Email';
+        });
+    }
 
     function addUser(e) {
         e.preventDefault();

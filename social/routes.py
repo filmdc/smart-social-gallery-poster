@@ -49,6 +49,28 @@ def _get_external_url(endpoint, **kwargs):
     return url
 
 
+def _email_configured():
+    """Check if email is configured via environment variables."""
+    from social.email import email_configured
+    return email_configured()
+
+
+def _get_email_from():
+    """Get the configured 'from' email address."""
+    from social.email import SMTP_FROM_EMAIL, SMTP_FROM_NAME
+    if not SMTP_FROM_EMAIL:
+        return None
+    return f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>" if SMTP_FROM_NAME else SMTP_FROM_EMAIL
+
+
+def _get_email_host():
+    """Get the configured SMTP host (without credentials)."""
+    from social.email import SMTP_HOST, SMTP_PORT
+    if not SMTP_HOST:
+        return None
+    return f"{SMTP_HOST}:{SMTP_PORT}"
+
+
 def register_routes(bp, db_path):
     """Register all social routes on the given Blueprint."""
     global _db_path
@@ -1217,7 +1239,11 @@ def register_routes(bp, db_path):
                                    sp_library=SHAREPOINT_LIBRARY_NAME or 'Documents',
                                    sp_sync_interval=SHAREPOINT_SYNC_INTERVAL,
                                    sp_cache_dir=sp_cache_dir,
-                                   sp_cache_count=sp_cache_count)
+                                   sp_cache_count=sp_cache_count,
+                                   # Email configuration
+                                   email_configured=_email_configured(),
+                                   email_from=_get_email_from(),
+                                   email_host=_get_email_host())
         finally:
             conn.close()
 
@@ -1233,6 +1259,58 @@ def register_routes(bp, db_path):
             return jsonify({'success': True})
         finally:
             conn.close()
+
+    # =========================================================================
+    # EMAIL TESTING
+    # =========================================================================
+
+    @bp.route('/email/test', methods=['POST'])
+    @admin_required
+    def send_test_email():
+        """Send a test email to verify SMTP configuration."""
+        from social.email import email_configured, send_email, SMTP_HOST, SMTP_PORT
+
+        if not email_configured():
+            return jsonify({
+                'success': False,
+                'error': 'Email not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables.'
+            })
+
+        data = request.get_json() if request.is_json else {}
+        to_email = data.get('to_email', '').strip()
+
+        if not to_email:
+            return jsonify({'success': False, 'error': 'Please provide an email address'})
+
+        # Send test email
+        html_body = """
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2 style="color: #2c5282;">Test Email from Smart Asset Gallery</h2>
+            <p>This is a test email to confirm your SMTP configuration is working correctly.</p>
+            <p style="color: #718096; font-size: 0.9em; margin-top: 30px;">
+                If you received this email, your email settings are configured properly.
+            </p>
+        </body>
+        </html>
+        """
+
+        success, error = send_email(
+            to_email,
+            "[Smart Asset Gallery] Test Email",
+            html_body
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Test email sent successfully to {to_email}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': error or 'Failed to send test email'
+            })
 
     # =========================================================================
     # USER MANAGEMENT
