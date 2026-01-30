@@ -1263,6 +1263,94 @@
             cursor: grab;
         }
 
+        /* Lightbox Tags Display */
+        #lightbox-tags-display {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            max-width: 80%;
+            z-index: 10;
+        }
+
+        #lightbox-tags-content {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .tags-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.8rem;
+            margin-right: 0.25rem;
+        }
+
+        .tag-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .tag-badge.program {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+        }
+
+        .tag-badge.campaign {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .no-tags-msg {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        /* Gallery Grid Tag Badges */
+        .item-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-top: 0.25rem;
+        }
+
+        .item-tag-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-weight: 500;
+            max-width: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .item-tag-badge.program {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .item-tag-badge.campaign {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
         #backToTopBtn {
             display: none;
             position: fixed;
@@ -2473,15 +2561,27 @@
                     <div class="filter-group"><label for="search-input">🔍 Search by Name</label><input type="text"
                             name="search" id="search-input" placeholder="Search files..."
                             value="{{ request.args.get('search', '') }}"></div>
+                    <div class="filter-group"><label for="media-type-select">🎬 Media Type</label><select
+                            name="media_type" id="media-type-select" multiple>
+                            <option value="image" {% if 'image' in selected_media_types %}selected{% endif %}>🖼️ Images</option>
+                            <option value="video" {% if 'video' in selected_media_types %}selected{% endif %}>🎥 Videos</option>
+                            <option value="audio" {% if 'audio' in selected_media_types %}selected{% endif %}>🎵 Audio</option>
+                            <option value="document" {% if 'document' in selected_media_types %}selected{% endif %}>📄 Documents</option>
+                        </select></div>
                     <div class="filter-group"><label for="extension-select">📄 Extensions</label><select
                             name="extension" id="extension-select" multiple>{% for ext in available_extensions %}<option
                                 value="{{ ext }}" {% if ext in selected_extensions %}selected{% endif %}>{{ ext }}
                             </option>{% endfor %}</select></div>
-                    <div class="filter-group"><label for="prefix-select">🏷️ Prefixes</label><select name="prefix"
-                            id="prefix-select" multiple>{% for pfx in available_prefixes %}{% if pfx != '.gallery ' %}
-                            <option value="{{ pfx }}" {% if pfx in selected_prefixes %}selected{% endif %}>{{ pfx }}
-                            </option>{% endif %}{% endfor %}
-                        </select></div>
+                    {% if social_enabled is defined and social_enabled %}
+                    <div class="filter-group"><label for="program-select">🏢 Programs</label><select
+                            name="program" id="program-select" multiple>{% for prog in available_programs %}<option
+                                value="{{ prog.id }}" {% if prog.id in selected_programs %}selected{% endif %}>{{ prog.name }}
+                            </option>{% endfor %}</select></div>
+                    <div class="filter-group"><label for="campaign-select">📣 Campaigns</label><select
+                            name="campaign" id="campaign-select" multiple>{% for camp in available_campaigns %}<option
+                                value="{{ camp.id }}" {% if camp.id in selected_campaigns %}selected{% endif %}>{{ camp.name }}
+                            </option>{% endfor %}</select></div>
+                    {% endif %}
                     <div class="filter-group">
                         <div class="filter-group-inline"><input type="checkbox" name="favorites" id="favorites-check"
                                 value="true" {% if show_favorites %}checked{% endif %}><label for="favorites-check">⭐
@@ -2573,6 +2673,16 @@
         <div id="lightbox-content">
             <div id="lightbox-media"></div>
         </div>
+        {% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}
+        <div id="lightbox-tags-display">
+            <div id="lightbox-tags-content">
+                <span class="tags-label">Tags:</span>
+                <span id="lightbox-programs-badges"></span>
+                <span id="lightbox-campaigns-badges"></span>
+                <span id="lightbox-no-tags" class="no-tags-msg">No tags assigned</span>
+            </div>
+        </div>
+        {% endif %}
         <button id="lightbox-prev" class="lightbox-nav">‹</button><button id="lightbox-next"
             class="lightbox-nav">›</button>
 
@@ -3264,6 +3374,12 @@
                 if (result.success) {
                     showNotification('Tags saved successfully!', 'success');
                     closeTagsPanel();
+                    // Refresh the lightbox tags display
+                    if (currentLightboxFile) {
+                        updateLightboxTagsDisplay(currentLightboxFile.id);
+                    }
+                    // Refresh the gallery item tags if visible
+                    updateGalleryItemTags(fileId);
                 } else {
                     showNotification('Error saving tags', 'error');
                 }
@@ -3273,6 +3389,87 @@
             } finally {
                 saveBtn.textContent = originalText;
                 saveBtn.disabled = false;
+            }
+        }
+
+        // Update lightbox tags display
+        async function updateLightboxTagsDisplay(fileId) {
+            const programsBadges = document.getElementById('lightbox-programs-badges');
+            const campaignsBadges = document.getElementById('lightbox-campaigns-badges');
+            const noTagsMsg = document.getElementById('lightbox-no-tags');
+
+            if (!programsBadges || !campaignsBadges) return;
+
+            try {
+                const response = await fetch(`/galleryout/social/files/${fileId}/categories`);
+                const data = await response.json();
+
+                let programsHTML = '';
+                let campaignsHTML = '';
+
+                if (data.programs && data.programs.length > 0) {
+                    programsHTML = data.programs.map(p =>
+                        `<span class="tag-badge program" title="${p.name}">🏢 ${p.name}</span>`
+                    ).join('');
+                }
+
+                if (data.campaigns && data.campaigns.length > 0) {
+                    campaignsHTML = data.campaigns.map(c =>
+                        `<span class="tag-badge campaign" title="${c.name}">📣 ${c.name}</span>`
+                    ).join('');
+                }
+
+                programsBadges.innerHTML = programsHTML;
+                campaignsBadges.innerHTML = campaignsHTML;
+
+                // Show/hide no tags message
+                if (noTagsMsg) {
+                    noTagsMsg.style.display = (data.programs.length === 0 && data.campaigns.length === 0) ? 'inline' : 'none';
+                }
+            } catch (error) {
+                console.error('Error fetching tags:', error);
+                programsBadges.innerHTML = '';
+                campaignsBadges.innerHTML = '';
+                if (noTagsMsg) noTagsMsg.style.display = 'inline';
+            }
+        }
+
+        // Update gallery item tags display
+        async function updateGalleryItemTags(fileId) {
+            const galleryItem = document.querySelector(`.gallery-item[data-file-id="${fileId}"]`);
+            if (!galleryItem) return;
+
+            try {
+                const response = await fetch(`/galleryout/social/files/${fileId}/categories`);
+                const data = await response.json();
+
+                let tagsContainer = galleryItem.querySelector('.item-tags');
+                if (!tagsContainer) {
+                    // Create tags container if it doesn't exist
+                    const itemInfo = galleryItem.querySelector('.item-info > div:first-child');
+                    if (itemInfo) {
+                        tagsContainer = document.createElement('div');
+                        tagsContainer.className = 'item-tags';
+                        itemInfo.appendChild(tagsContainer);
+                    }
+                }
+
+                if (tagsContainer) {
+                    let tagsHTML = '';
+                    if (data.programs && data.programs.length > 0) {
+                        tagsHTML += data.programs.map(p =>
+                            `<span class="item-tag-badge program" title="${p.name}">🏢 ${p.name}</span>`
+                        ).join('');
+                    }
+                    if (data.campaigns && data.campaigns.length > 0) {
+                        tagsHTML += data.campaigns.map(c =>
+                            `<span class="item-tag-badge campaign" title="${c.name}">📣 ${c.name}</span>`
+                        ).join('');
+                    }
+                    tagsContainer.innerHTML = tagsHTML;
+                }
+            } catch (error) {
+                console.error('Error updating gallery item tags:', error);
             }
         }
 
@@ -3559,8 +3756,13 @@ function showItemAtIndex(index) {
                     postFromLightbox(file.id);
                 };
             }
+
+            // Load and display tags for this file
+            if (socialEnabled) {
+                updateLightboxTagsDisplay(file.id);
+            }
         }
-        
+
         function navigateLightbox(direction) { if (galleryItems.length === 0) return; currentLightboxIndex = (currentLightboxIndex + direction + galleryItems.length) % galleryItems.length; showItemAtIndex(currentLightboxIndex); }
         function zoomLightbox(amount) { const mediaEl = lightboxMedia.querySelector('img, video'); if (!mediaEl) return; currentZoom = Math.max(0.1, Math.min(10, currentZoom + amount)); panLightbox(0, 0); }
 
@@ -4174,6 +4376,13 @@ async function showNodeSummary(event, fileId) {
 
             new TomSelect('#extension-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📄 Select extensions...' });
             new TomSelect('#prefix-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏷️ Select prefixes...' });
+            new TomSelect('#media-type-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🎬 Select media types...' });
+            if (document.getElementById('program-select')) {
+                new TomSelect('#program-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '🏢 Select programs...' });
+            }
+            if (document.getElementById('campaign-select')) {
+                new TomSelect('#campaign-select', { plugins: ['checkbox_options', 'clear_button'], placeholder: '📣 Select campaigns...' });
+            }
 
             // View size slider functionality
             const viewSizeSlider = document.getElementById('view-size-slider');
