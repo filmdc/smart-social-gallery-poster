@@ -52,9 +52,20 @@ def publish_to_facebook(account, post, media_paths, app_secret_key=None):
     Returns:
         dict with keys: platform_post_id, platform_url, status, error_message
     """
-    access_token = decrypt_token(account['access_token'], app_secret_key)
-    page_id = account['platform_account_id']
+    page_id = account.get('platform_account_id', '')
     caption = _build_caption(post)
+
+    # Decrypt access token with proper error handling
+    try:
+        access_token = decrypt_token(account['access_token'], app_secret_key)
+    except Exception as e:
+        logger.error(f"Facebook publish failed: Token decryption error for page {page_id}: {e}")
+        return {
+            'platform_post_id': None,
+            'platform_url': None,
+            'status': 'failed',
+            'error_message': 'Token decryption failed. Please reconnect your Facebook account in Settings.',
+        }
 
     # Validate access token
     if not access_token:
