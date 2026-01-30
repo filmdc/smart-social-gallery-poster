@@ -131,6 +131,56 @@ def register_routes(bp, db_path):
         return redirect(url_for('gallery_redirect_base'))
 
     # =========================================================================
+    # PROFILE
+    # =========================================================================
+
+    @bp.route('/profile', methods=['GET', 'POST'])
+    @login_required
+    def profile():
+        """User profile page for editing personal information."""
+        if request.method == 'POST':
+            action = request.form.get('action', 'update_profile')
+
+            if action == 'update_profile':
+                display_name = request.form.get('display_name', '').strip()
+                email = request.form.get('email', '').strip()
+
+                errors = []
+                if not display_name:
+                    errors.append('Display name is required.')
+                if email and '@' not in email:
+                    errors.append('Please enter a valid email address.')
+
+                if errors:
+                    return render_template('social/profile.html', errors=errors)
+
+                current_user.update_profile(_db_path, display_name=display_name, email=email or None)
+                flash('Profile updated successfully.', 'success')
+                return redirect(url_for('social.profile'))
+
+            elif action == 'change_password':
+                current_password = request.form.get('current_password', '')
+                new_password = request.form.get('new_password', '')
+                confirm_password = request.form.get('confirm_password', '')
+
+                errors = []
+                if not current_user.check_password(current_password):
+                    errors.append('Current password is incorrect.')
+                if len(new_password) < 8:
+                    errors.append('New password must be at least 8 characters.')
+                if new_password != confirm_password:
+                    errors.append('New passwords do not match.')
+
+                if errors:
+                    return render_template('social/profile.html', errors=errors, password_error=True)
+
+                current_user.change_password(_db_path, new_password)
+                flash('Password changed successfully.', 'success')
+                return redirect(url_for('social.profile'))
+
+        return render_template('social/profile.html')
+
+    # =========================================================================
     # REGISTRATION REQUEST
     # =========================================================================
 

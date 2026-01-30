@@ -193,6 +193,38 @@ class User(UserMixin):
         finally:
             conn.close()
 
+    def update_profile(self, db_path, display_name=None, email=None):
+        """Update user profile information."""
+        conn = get_social_db(db_path)
+        try:
+            updates = []
+            params = []
+            if display_name is not None:
+                updates.append("display_name = ?")
+                params.append(display_name)
+                self.display_name = display_name
+            if email is not None:
+                updates.append("email = ?")
+                params.append(email.lower() if email else None)
+                self.email = email.lower() if email else None
+            if updates:
+                params.append(self.id)
+                conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+                conn.commit()
+        finally:
+            conn.close()
+
+    def change_password(self, db_path, new_password):
+        """Change the user's password."""
+        new_hash = self.hash_password(new_password)
+        conn = get_social_db(db_path)
+        try:
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, self.id))
+            conn.commit()
+            self.password_hash = new_hash
+        finally:
+            conn.close()
+
 
 def init_login_manager(app, db_path):
     """Initialize flask-login with the Flask app."""
