@@ -1441,15 +1441,15 @@ def gallery_view(folder_key):
     folders = get_dynamic_folder_config(force_refresh=True)
     if folder_key not in folders:
         return redirect(url_for('gallery_view', folder_key='_root_'))
-    
+
     current_folder_info = folders[folder_key]
     folder_path = current_folder_info['path']
-    
+
     with get_db_connection() as conn:
         conditions, params = [], []
         conditions.append("path LIKE ?")
         params.append(folder_path + os.sep + '%')
-        
+
         sort_by = 'name' if request.args.get('sort_by') == 'name' else 'mtime'
         sort_order = 'asc' if request.args.get('sort_order', 'desc').lower() == 'asc' else 'desc'
 
@@ -1459,6 +1459,22 @@ def gallery_view(folder_key):
             params.append(f"%{search_term}%")
         if request.args.get('favorites', 'false').lower() == 'true':
             conditions.append("is_favorite = 1")
+
+        # Media type filter
+        selected_media_types = request.args.getlist('media_type')
+        if selected_media_types:
+            type_conditions = []
+            for mt in selected_media_types:
+                if mt == 'image':
+                    type_conditions.append("type IN ('image', 'animated_image')")
+                elif mt == 'video':
+                    type_conditions.append("type = 'video'")
+                elif mt == 'audio':
+                    type_conditions.append("type = 'audio'")
+                elif mt == 'document':
+                    type_conditions.append("type = 'document'")
+            if type_conditions:
+                conditions.append(f"({' OR '.join(type_conditions)})")
 
         selected_prefixes = request.args.getlist('prefix')
         if selected_prefixes:
@@ -1474,11 +1490,64 @@ def gallery_view(folder_key):
 
         sort_direction = "ASC" if sort_order == 'asc' else "DESC"
         query = f"SELECT * FROM files WHERE {' AND '.join(conditions)} ORDER BY {sort_by} {sort_direction}"
-        
+
         all_files_raw = conn.execute(query, params).fetchall()
-        
+
     folder_path_norm = os.path.normpath(folder_path)
     all_files_filtered = [dict(row) for row in all_files_raw if os.path.normpath(os.path.dirname(row['path'])) == folder_path_norm]
+
+    # Filter by programs and campaigns (requires social features)
+    selected_programs = request.args.getlist('program')
+    selected_campaigns = request.args.getlist('campaign')
+    available_programs = []
+    available_campaigns = []
+
+    if SOCIAL_FEATURES_ENABLED:
+        try:
+            from social.models import get_social_db
+            social_conn = get_social_db(DATABASE_FILE)
+            try:
+                # Fetch available programs and campaigns for dropdowns
+                available_programs = [
+                    {'id': row['id'], 'name': row['name']}
+                    for row in social_conn.execute(
+                        "SELECT id, name FROM programs WHERE is_active = 1 ORDER BY sort_order, name"
+                    ).fetchall()
+                ]
+                available_campaigns = [
+                    {'id': row['id'], 'name': row['name']}
+                    for row in social_conn.execute(
+                        "SELECT id, name FROM campaigns WHERE is_active = 1 ORDER BY sort_order, name"
+                    ).fetchall()
+                ]
+
+                # Filter by programs if selected
+                if selected_programs:
+                    program_file_ids = set()
+                    placeholders = ','.join(['?' for _ in selected_programs])
+                    rows = social_conn.execute(
+                        f"SELECT DISTINCT file_id FROM file_programs WHERE program_id IN ({placeholders})",
+                        selected_programs
+                    ).fetchall()
+                    program_file_ids = {row['file_id'] for row in rows}
+                    all_files_filtered = [f for f in all_files_filtered if f['id'] in program_file_ids]
+
+                # Filter by campaigns if selected
+                if selected_campaigns:
+                    campaign_file_ids = set()
+                    placeholders = ','.join(['?' for _ in selected_campaigns])
+                    rows = social_conn.execute(
+                        f"SELECT DISTINCT file_id FROM file_campaigns WHERE campaign_id IN ({placeholders})",
+                        selected_campaigns
+                    ).fetchall()
+                    campaign_file_ids = {row['file_id'] for row in rows}
+                    all_files_filtered = [f for f in all_files_filtered if f['id'] in campaign_file_ids]
+
+            finally:
+                social_conn.close()
+        except Exception as e:
+            print(f"Warning: Could not load programs/campaigns for filtering: {e}")
+
     gallery_view_cache = all_files_filtered
     initial_files = gallery_view_cache[:PAGE_SIZE]
     total_folder_files, extensions, prefixes = scan_folder_and_extract_options(folder_path)
@@ -1516,6 +1585,11 @@ def gallery_view(folder_key):
                            available_prefixes=prefixes,
                            selected_extensions=request.args.getlist('extension'),
                            selected_prefixes=request.args.getlist('prefix'),
+                           selected_media_types=request.args.getlist('media_type'),
+                           selected_programs=selected_programs,
+                           selected_campaigns=selected_campaigns,
+                           available_programs=available_programs,
+                           available_campaigns=available_campaigns,
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
                            protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
                            social_enabled=SOCIAL_FEATURES_ENABLED,
