@@ -8,11 +8,14 @@ then publishes and returns a result dict with platform_post_id, platform_url, an
 import os
 import time
 import json
+import logging
 import mimetypes
 
 import requests
 
 from social.oauth import FB_GRAPH_BASE, LI_API_BASE, decrypt_token
+
+logger = logging.getLogger(__name__)
 
 # Maximum file sizes per platform (approximate)
 FB_IMAGE_MAX = 10 * 1024 * 1024    # 10 MB
@@ -52,6 +55,40 @@ def publish_to_facebook(account, post, media_paths, app_secret_key=None):
     access_token = decrypt_token(account['access_token'], app_secret_key)
     page_id = account['platform_account_id']
     caption = _build_caption(post)
+
+    # Validate access token
+    if not access_token:
+        logger.error(f"Facebook publish failed: No access token for page {page_id}")
+        return {
+            'platform_post_id': None,
+            'platform_url': None,
+            'status': 'failed',
+            'error_message': 'No valid access token. Please reconnect your Facebook account.',
+        }
+
+    # Validate page ID
+    if not page_id:
+        logger.error("Facebook publish failed: No page ID configured")
+        return {
+            'platform_post_id': None,
+            'platform_url': None,
+            'status': 'failed',
+            'error_message': 'No Facebook Page ID configured. Please reconnect your account.',
+        }
+
+    # Validate media files exist
+    if media_paths:
+        missing_files = [p for p in media_paths if not os.path.exists(p)]
+        if missing_files:
+            logger.error(f"Facebook publish failed: Missing files: {missing_files}")
+            return {
+                'platform_post_id': None,
+                'platform_url': None,
+                'status': 'failed',
+                'error_message': f'Media file(s) not found: {", ".join(os.path.basename(f) for f in missing_files)}',
+            }
+
+    logger.info(f"Publishing to Facebook page {page_id}, media_count={len(media_paths) if media_paths else 0}")
 
     try:
         if not media_paths:
@@ -148,10 +185,28 @@ def publish_to_facebook(account, post, media_paths, app_secret_key=None):
 
     except requests.RequestException as e:
         error_msg = str(e)
+        error_code = None
         try:
-            error_msg = e.response.json().get('error', {}).get('message', error_msg)
+            if hasattr(e, 'response') and e.response is not None:
+                error_data = e.response.json().get('error', {})
+                error_msg = error_data.get('message', error_msg)
+                error_code = error_data.get('code')
+                error_subcode = error_data.get('error_subcode')
+                if error_subcode:
+                    error_msg = f"{error_msg} (subcode: {error_subcode})"
         except Exception:
             pass
+        logger.error(f"Facebook publish failed for page {page_id}: {error_msg} (code: {error_code})")
+        return {
+            'platform_post_id': None,
+            'platform_url': None,
+            'status': 'failed',
+            'error_message': error_msg,
+        }
+    except Exception as e:
+        # Catch any other unexpected errors (file I/O, etc.)
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.exception(f"Facebook publish unexpected error for page {page_id}")
         return {
             'platform_post_id': None,
             'platform_url': None,
