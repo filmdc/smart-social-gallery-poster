@@ -656,11 +656,37 @@
             padding-right: 0.8rem;
         }
 
+        .ts-wrapper {
+            min-width: 0;
+        }
+
         .ts-control {
             background: var(--glass-bg) !important;
             border: 1px solid var(--glass-border) !important;
             border-radius: 8px !important;
             backdrop-filter: blur(10px) !important;
+            min-height: 38px !important;
+            max-height: 38px !important;
+            overflow: hidden !important;
+            padding: 4px 8px !important;
+        }
+
+        .ts-wrapper.multi .ts-control > .item {
+            background: var(--accent-color) !important;
+            color: white !important;
+            border: none !important;
+            padding: 2px 6px !important;
+            margin: 2px !important;
+            border-radius: 4px !important;
+            font-size: 0.75rem !important;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .ts-control input {
+            min-width: 30px !important;
         }
 
         .ts-dropdown,
@@ -675,6 +701,15 @@
             z-index: 1000;
             border-radius: 8px !important;
             box-shadow: var(--shadow-lg) !important;
+        }
+
+        .ts-dropdown-content {
+            max-height: 200px !important;
+            overflow-y: auto !important;
+        }
+
+        .ts-dropdown .option {
+            padding: 8px 12px !important;
         }
 
         #gallery-anchor {
@@ -3106,7 +3141,29 @@
 
         function startSyncProcess(isManualRefresh = false) { const syncOverlay = document.getElementById('sync-overlay'); const syncMessage = document.getElementById('sync-message'); const syncProgressFill = document.getElementById('sync-progress-fill'); const eventSource = new EventSource(`/galleryout/sync_status/${currentFolderKey}`); let hasChanges = false; if (isManualRefresh) { syncOverlay.style.display = 'flex'; syncMessage.textContent = 'Checking for changes...'; syncProgressFill.style.width = '0%'; syncProgressFill.style.backgroundColor = 'var(--primary-color)'; } const cleanupAndClose = (shouldReload = false) => { eventSource.close(); if (shouldReload) { setTimeout(() => window.location.reload(), 1200); } else { setTimeout(() => { syncOverlay.style.display = 'none'; }, isManualRefresh ? 1200 : 0); } }; eventSource.onmessage = function (event) { try { const data = JSON.parse(event.data); if (!hasChanges && data.status !== 'no_changes') { syncOverlay.style.display = 'flex'; hasChanges = true; } if (syncOverlay.style.display === 'flex') { syncMessage.textContent = data.message; if (data.total > 0) { syncProgressFill.style.width = `${(data.current / data.total) * 100}%`; } } if (data.status === 'no_changes') { if (isManualRefresh) { syncProgressFill.style.width = '100%'; cleanupAndClose(true); } else {cleanupAndClose(false); }} else if (data.status === 'reloading') { cleanupAndClose(true); } else if (data.error) { syncProgressFill.style.backgroundColor = 'var(--danger-color)'; cleanupAndClose(false); } } catch (e) { console.error("Error parsing SSE data:", e); cleanupAndClose(false); } }; eventSource.onerror = function () { eventSource.close(); }; }
         function formatBytes(bytes, decimals = 1) { if (!bytes) return '0 B'; const k = 1024; const dm = decimals < 0 ? 0 : decimals; const sizes = ['B', 'KB', 'MB', 'GB', 'TB']; const i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]; }
-        function appendFiles(files) { if (!files || files.length === 0) { if (currentItemCount === 0) showEmptyState(); updateLoadMoreVisibility(); return; } const fragment = document.createDocumentFragment(); const newLazyElements = []; files.forEach(file => { allFilesData.push(file); const item = createGalleryItem(file); fragment.appendChild(item); galleryItems.push(item); const lazyEl = item.querySelector('.lazy'); if (lazyEl) newLazyElements.push(lazyEl); }); galleryContainer.appendChild(fragment); initializeLazyLoading(newLazyElements); currentItemCount += files.length; updateLoadMoreVisibility(); }
+        function appendFiles(files) {
+            if (!files || files.length === 0) { if (currentItemCount === 0) showEmptyState(); updateLoadMoreVisibility(); return; }
+            const fragment = document.createDocumentFragment();
+            const newLazyElements = [];
+            const fileIds = [];
+            files.forEach(file => {
+                allFilesData.push(file);
+                const item = createGalleryItem(file);
+                fragment.appendChild(item);
+                galleryItems.push(item);
+                const lazyEl = item.querySelector('.lazy');
+                if (lazyEl) newLazyElements.push(lazyEl);
+                fileIds.push(file.id);
+            });
+            galleryContainer.appendChild(fragment);
+            initializeLazyLoading(newLazyElements);
+            currentItemCount += files.length;
+            updateLoadMoreVisibility();
+            // Load tags for newly appended files
+            if (socialEnabled && fileIds.length > 0) {
+                loadTagsForFiles(fileIds);
+            }
+        }
         function createGalleryItem(file) {
             const item = document.createElement('div');
             item.className = 'gallery-item';
@@ -3142,7 +3199,8 @@
                 scannedHTML = `<div class="file-scanned-time" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; opacity: 0.8;">🔍 Scanned: ${formattedScannedDate}</div>`;
             }
 
-            item.innerHTML = `<div class="selection-checkmark" onclick="toggleSelection(event, '${file.id}', this.closest('.gallery-item'))">✓</div><div class="thumbnail-link" onclick="openLightbox(event, '${file.id}'); event.stopPropagation();" draggable="false"><div class="thumbnail-wrapper">${mediaHTML}${file.duration ? `<span class="duration-overlay">⏱️ ${file.duration}</span>` : ''}</div></div><div class="item-info"><div><p title="${file.name}"><strong>${file.name}</strong></p>${metadataHTML}${scannedHTML}</div><div class="item-actions">${socialPostBtnHTML}<button class="favorite-btn ${file.is_favorite ? 'favorited' : ''}" title="Favorite" onclick="toggleFavorite(event, '${file.id}', this)">${file.is_favorite ? '⭐' : '☆'}</button><a href="/galleryout/download/${file.id}" onclick="event.stopPropagation()" title="Download">💾</a><button class="delete-btn" onclick="deleteFile(event, '${file.id}', this)">🗑️</button></div></div>`;
+            const tagsContainerHTML = socialEnabled ? `<div class="item-tags" data-file-id="${file.id}"></div>` : '';
+            item.innerHTML = `<div class="selection-checkmark" onclick="toggleSelection(event, '${file.id}', this.closest('.gallery-item'))">✓</div><div class="thumbnail-link" onclick="openLightbox(event, '${file.id}'); event.stopPropagation();" draggable="false"><div class="thumbnail-wrapper">${mediaHTML}${file.duration ? `<span class="duration-overlay">⏱️ ${file.duration}</span>` : ''}</div></div><div class="item-info"><div><p title="${file.name}"><strong>${file.name}</strong></p>${tagsContainerHTML}${metadataHTML}${scannedHTML}</div><div class="item-actions">${socialPostBtnHTML}<button class="favorite-btn ${file.is_favorite ? 'favorited' : ''}" title="Favorite" onclick="toggleFavorite(event, '${file.id}', this)">${file.is_favorite ? '⭐' : '☆'}</button><a href="/galleryout/download/${file.id}" onclick="event.stopPropagation()" title="Download">💾</a><button class="delete-btn" onclick="deleteFile(event, '${file.id}', this)">🗑️</button></div></div>`;
             return item;
         }
         function updateLoadMoreVisibility() { const loadMoreContainer = document.getElementById('load-more-container'); if (!loadMoreContainer) return; const shouldHide = currentItemCount >= totalFiles || totalFiles === 0; loadMoreContainer.style.display = shouldHide ? 'none' : 'block'; }
@@ -3470,6 +3528,41 @@
                 }
             } catch (error) {
                 console.error('Error updating gallery item tags:', error);
+            }
+        }
+
+        // Load tags for multiple files (batch operation)
+        async function loadTagsForFiles(fileIds) {
+            if (!fileIds || fileIds.length === 0) return;
+
+            try {
+                const response = await fetch('/galleryout/social/files/batch-categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_ids: fileIds })
+                });
+                const data = await response.json();
+
+                // Update each file's tags container
+                for (const [fileId, tags] of Object.entries(data)) {
+                    const tagsContainer = document.querySelector(`.item-tags[data-file-id="${fileId}"]`);
+                    if (tagsContainer) {
+                        let tagsHTML = '';
+                        if (tags.programs && tags.programs.length > 0) {
+                            tagsHTML += tags.programs.map(p =>
+                                `<span class="item-tag-badge program" title="${p.name}">🏢 ${p.name}</span>`
+                            ).join('');
+                        }
+                        if (tags.campaigns && tags.campaigns.length > 0) {
+                            tagsHTML += tags.campaigns.map(c =>
+                                `<span class="item-tag-badge campaign" title="${c.name}">📣 ${c.name}</span>`
+                            ).join('');
+                        }
+                        tagsContainer.innerHTML = tagsHTML;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading batch tags:', error);
             }
         }
 

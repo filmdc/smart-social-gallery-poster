@@ -693,6 +693,61 @@ def register_routes(bp, db_path):
         finally:
             conn.close()
 
+    @bp.route('/files/batch-categories', methods=['POST'])
+    @login_required
+    def get_batch_file_categories():
+        """Get programs and campaigns for multiple files at once."""
+        data = request.json or {}
+        file_ids = data.get('file_ids', [])
+
+        if not file_ids:
+            return jsonify({})
+
+        conn = get_social_db(_db_path)
+        try:
+            result = {}
+
+            # Get all programs for requested files
+            if file_ids:
+                placeholders = ','.join(['?' for _ in file_ids])
+                program_rows = conn.execute(f"""
+                    SELECT fp.file_id, p.id, p.name FROM programs p
+                    JOIN file_programs fp ON p.id = fp.program_id
+                    WHERE fp.file_id IN ({placeholders})
+                """, file_ids).fetchall()
+
+                campaign_rows = conn.execute(f"""
+                    SELECT fc.file_id, c.id, c.name FROM campaigns c
+                    JOIN file_campaigns fc ON c.id = fc.campaign_id
+                    WHERE fc.file_id IN ({placeholders})
+                """, file_ids).fetchall()
+
+                # Initialize result dict for all requested files
+                for file_id in file_ids:
+                    result[file_id] = {'programs': [], 'campaigns': []}
+
+                # Populate programs
+                for row in program_rows:
+                    file_id = row['file_id']
+                    if file_id in result:
+                        result[file_id]['programs'].append({
+                            'id': row['id'],
+                            'name': row['name']
+                        })
+
+                # Populate campaigns
+                for row in campaign_rows:
+                    file_id = row['file_id']
+                    if file_id in result:
+                        result[file_id]['campaigns'].append({
+                            'id': row['id'],
+                            'name': row['name']
+                        })
+
+            return jsonify(result)
+        finally:
+            conn.close()
+
     # =========================================================================
     # DASHBOARD
     # =========================================================================
