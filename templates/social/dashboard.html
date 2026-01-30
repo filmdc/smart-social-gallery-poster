@@ -361,8 +361,13 @@
                         <button class="btn btn-warning btn-sm" onclick="publishPost('{{ post.id }}')">Retry</button>
                     {% endif %}
 
-                    {% if post.status not in ('publishing', 'published') %}
-                    <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
+                    {# Delete button: admins can delete any post, others can delete non-published posts #}
+                    {% if post.status == 'published' %}
+                        {% if current_user.can_post_without_approval %}
+                        <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
+                        {% endif %}
+                    {% elif post.status != 'publishing' %}
+                        <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
                     {% endif %}
                 </div>
             </div>
@@ -442,13 +447,33 @@
     function deletePost(postId) {
         if (!confirm('Delete this post? This cannot be undone.')) return;
         fetch('/galleryout/social/posts/' + postId, {method: 'DELETE'})
-        .then(r => r.json()).then(data => {
+        .then(r => {
+            if (!r.ok) {
+                return r.text().then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.error || 'Server error: ' + r.status);
+                    } catch (e) {
+                        if (e.message.startsWith('Server error') || e.message.includes('Permission')) {
+                            throw e;
+                        }
+                        throw new Error('Server error: ' + r.status);
+                    }
+                });
+            }
+            return r.json();
+        })
+        .then(data => {
             if (data.success) {
                 document.getElementById('post-' + postId).remove();
+                // If no posts left, reload to show empty state
+                if (document.querySelectorAll('.post-card').length === 0) {
+                    location.reload();
+                }
             } else {
                 alert(data.error || 'Error deleting post');
             }
-        }).catch(err => alert('Error: ' + err));
+        }).catch(err => alert('Error: ' + err.message));
     }
     </script>
 </body>
