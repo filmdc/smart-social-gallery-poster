@@ -191,7 +191,7 @@ def key_to_path(key):
     except Exception: return None
 
 # --- DERIVED SETTINGS ---
-DB_SCHEMA_VERSION = 27
+DB_SCHEMA_VERSION = 28
 THUMBNAIL_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, THUMBNAIL_CACHE_FOLDER_NAME)
 SQLITE_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, SQLITE_CACHE_FOLDER_NAME)
 DATABASE_FILE = os.path.join(SQLITE_CACHE_DIR, DATABASE_FILENAME)
@@ -829,8 +829,76 @@ def format_duration(seconds):
     m, s = divmod(int(seconds), 60); h, m = divmod(m, 60)
     return f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
 
+def extract_media_created_date(filepath, file_type):
+    """
+    Extract the original creation date from media files.
+    For images: reads EXIF DateTimeOriginal or DateTimeDigitized
+    For videos: reads creation_time from ffprobe metadata
+    Returns: Unix timestamp (float) or None if not found
+    """
+    from datetime import datetime
+    ext_lower = os.path.splitext(filepath)[1].lower()
+
+    # For images, try to get EXIF data
+    if file_type in ['image', 'animated_image']:
+        try:
+            with Image.open(filepath) as img:
+                exif = img._getexif() if hasattr(img, '_getexif') else None
+                if exif:
+                    # EXIF tags: 36867 = DateTimeOriginal, 36868 = DateTimeDigitized, 306 = DateTime
+                    for tag_id in [36867, 36868, 306]:
+                        if tag_id in exif:
+                            date_str = exif[tag_id]
+                            if date_str:
+                                try:
+                                    # EXIF format: "YYYY:MM:DD HH:MM:SS"
+                                    dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                                    return dt.timestamp()
+                                except ValueError:
+                                    pass
+        except Exception:
+            pass
+
+    # For videos, use ffprobe to get creation_time
+    elif file_type == 'video':
+        current_ffprobe_path = FFPROBE_EXECUTABLE_PATH
+        if not current_ffprobe_path:
+            current_ffprobe_path = find_ffprobe_path()
+
+        if current_ffprobe_path:
+            try:
+                cmd = [current_ffprobe_path, '-v', 'quiet', '-print_format', 'json', '-show_format', filepath]
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=True,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                data = json.loads(result.stdout)
+                if 'format' in data and 'tags' in data['format']:
+                    tags = data['format']['tags']
+                    # Try common creation time tags
+                    for key in ['creation_time', 'date', 'com.apple.quicktime.creationdate']:
+                        if key in tags:
+                            date_str = tags[key]
+                            # Try various date formats
+                            for fmt in ["%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]:
+                                try:
+                                    dt = datetime.strptime(date_str.split('+')[0].split('.')[0] + ('' if 'T' not in fmt else ''),
+                                                          fmt.replace('.%f', '').replace('Z', ''))
+                                    return dt.timestamp()
+                                except ValueError:
+                                    continue
+                            # Try parsing ISO format directly
+                            try:
+                                dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                                return dt.timestamp()
+                            except ValueError:
+                                pass
+            except Exception:
+                pass
+
+    return None
+
+
 def analyze_file_metadata(filepath):
-    details = {'type': 'unknown', 'duration': '', 'dimensions': '', 'has_workflow': 0}
+    details = {'type': 'unknown', 'duration': '', 'dimensions': '', 'has_workflow': 0, 'media_created_at': None}
     ext_lower = os.path.splitext(filepath)[1].lower()
     type_map = {'.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'animated_image', '.mp4': 'video', '.webm': 'video', '.mov': 'video', '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.flac': 'audio'}
     details['type'] = type_map.get(ext_lower, 'unknown')
@@ -858,6 +926,8 @@ def analyze_file_metadata(filepath):
                     elif ext_lower == '.webp': total_duration_sec = getattr(img, 'n_frames', 1) / WEBP_ANIMATED_FPS
         except Exception: pass
     if total_duration_sec > 0: details['duration'] = format_duration(total_duration_sec)
+    # Extract original media creation date
+    details['media_created_at'] = extract_media_created_date(filepath, details['type'])
     return details
 
 def create_thumbnail(filepath, file_hash, file_type):
@@ -928,7 +998,8 @@ def process_single_file(filepath):
         return (
             file_id, filepath, mtime, os.path.basename(filepath),
             metadata['type'], metadata['duration'], metadata['dimensions'], metadata['has_workflow'], file_size, time.time(),
-            json.dumps(models_list), json.dumps(loras_list), json.dumps(input_files_list)
+            json.dumps(models_list), json.dumps(loras_list), json.dumps(input_files_list),
+            metadata['media_created_at']
         )
     except Exception as e:
         print(f"ERROR: Failed to process file {os.path.basename(filepath)} in worker: {e}")
@@ -958,7 +1029,8 @@ def init_db(conn=None):
             sp_drive_id TEXT,
             sp_original_path TEXT,
             sp_sync_timestamp REAL,
-            original_path TEXT
+            original_path TEXT,
+            media_created_at REAL
         )
     ''')
     # Create move history table
@@ -1101,7 +1173,7 @@ def full_sync_database(conn):
             for i in range(0, len(results), BATCH_SIZE):
                 batch = results[i:i + BATCH_SIZE]
                 conn.executemany(
-                    "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files, media_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     batch
                 )
                 conn.commit()
@@ -1163,8 +1235,8 @@ def sync_folder_on_demand(folder_path):
                         }
                         yield f"data: {json.dumps(progress_data)}\n\n"
 
-                if data_to_upsert: 
-                    conn.executemany("INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_to_upsert)
+                if data_to_upsert:
+                    conn.executemany("INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files, media_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_to_upsert)
 
             if files_to_delete:
                 conn.executemany("DELETE FROM files WHERE path IN (?)", [(p,) for p in files_to_delete])
@@ -1264,6 +1336,17 @@ def initialize_gallery():
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_files_sp_item_id ON files(sp_item_id)')
                 conn.commit()
                 print("INFO: Migration to v27 complete (file origin tracking).")
+
+            # Migration to version 28: Add media_created_at column for original creation date
+            if stored_version < 28:
+                cursor = conn.execute("PRAGMA table_info(files)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                if 'media_created_at' not in columns:
+                    print("INFO: Adding 'media_created_at' column to files table...")
+                    conn.execute("ALTER TABLE files ADD COLUMN media_created_at REAL")
+                    conn.commit()
+                    print("INFO: Migration to v28 complete (media creation date tracking).")
 
             conn.execute(f'PRAGMA user_version = {DB_SCHEMA_VERSION}')
             conn.commit()
@@ -1767,16 +1850,90 @@ def rescan_folder():
             if results:
                 # Upsert results
                 conn.executemany(
-                    "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files, media_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     results
                 )
                 conn.commit()
-                
+
         return jsonify({'status': 'success', 'message': f'Successfully rescanned {len(results)} files.', 'count': len(results)})
         
     except Exception as e:
         print(f"ERROR: Rescan failed: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/galleryout/rescan_all_folders', methods=['POST'])
+def rescan_all_folders():
+    """Rescan all folders including SharePoint-synced folders."""
+    data = request.json or {}
+    mode = data.get('mode', 'all')  # 'all' or 'recent'
+
+    try:
+        folders = get_dynamic_folder_config()
+        total_rescanned = 0
+        folder_results = {}
+
+        with get_db_connection() as conn:
+            for folder_key, folder_info in folders.items():
+                folder_path = folder_info['path']
+
+                # Get all files in this folder (not subfolders)
+                query = "SELECT path, last_scanned FROM files WHERE path LIKE ?"
+                params = (folder_path + os.sep + '%',)
+                rows = conn.execute(query, params).fetchall()
+
+                # Filter to only direct children of this folder
+                folder_path_norm = os.path.normpath(folder_path)
+                files_in_folder = [
+                    {'path': row['path'], 'last_scanned': row['last_scanned']}
+                    for row in rows
+                    if os.path.normpath(os.path.dirname(row['path'])) == folder_path_norm
+                ]
+
+                files_to_process = []
+                current_time = time.time()
+
+                if mode == 'recent':
+                    cutoff_time = current_time - 3600
+                    files_to_process = [f['path'] for f in files_in_folder if (f['last_scanned'] or 0) < cutoff_time]
+                else:
+                    files_to_process = [f['path'] for f in files_in_folder]
+
+                if not files_to_process:
+                    continue
+
+                print(f"INFO: Rescanning {len(files_to_process)} files in '{folder_info.get('display_name', folder_key)}'...")
+
+                results = []
+                with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
+                    futures = {executor.submit(process_single_file, fp): fp for fp in files_to_process}
+                    for future in concurrent.futures.as_completed(futures):
+                        result = future.result()
+                        if result:
+                            results.append(result)
+
+                if results:
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files, media_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        results
+                    )
+                    conn.commit()
+                    total_rescanned += len(results)
+                    folder_results[folder_info.get('display_name', folder_key)] = len(results)
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Rescanned {total_rescanned} files across {len(folder_results)} folders.',
+            'count': total_rescanned,
+            'folders': folder_results
+        })
+
+    except Exception as e:
+        print(f"ERROR: Rescan all folders failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/galleryout/create_folder', methods=['POST'])
 def create_folder():

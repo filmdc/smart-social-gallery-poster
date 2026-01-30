@@ -2874,19 +2874,24 @@
     <div id="rescan-modal-overlay"
         style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);backdrop-filter:blur(10px);z-index:2400;display:flex;justify-content:center;align-items:center;opacity:0;pointer-events:none;transition:opacity 0.3s;">
         <div
-            style="background:var(--surface-color);border:1px solid var(--border-color);border-radius:16px;box-shadow:var(--shadow-lg);padding:2rem;max-width:400px;text-align:center;">
-            <h3 style="margin-top:0;">♻️ Rescan Folder</h3>
-            <p style="color:var(--text-muted);margin-bottom:1.5rem;">Choose how you want to rescan files in this folder.
-            </p>
-            <div style="display:flex;flex-direction:column;gap:1rem;">
-                <button id="rescan-recent-btn"
-                    style="background:var(--primary-color);color:white;border:none;padding:0.75rem;border-radius:8px;cursor:pointer;font-weight:600;">Rescan
-                    Outdated (> 1h)</button>
-                <button id="rescan-all-btn"
-                    style="background:var(--danger-color);color:white;border:none;padding:0.75rem;border-radius:8px;cursor:pointer;font-weight:600;">Rescan
-                    All Files</button>
+            style="background:var(--surface-color);border:1px solid var(--border-color);border-radius:16px;box-shadow:var(--shadow-lg);padding:2rem;max-width:450px;text-align:center;">
+            <h3 style="margin-top:0;">♻️ Rescan Options</h3>
+            <p style="color:var(--text-muted);margin-bottom:1rem;">Rescan files to extract metadata and original dates.</p>
+            <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                <div style="border-bottom:1px solid var(--border-color);padding-bottom:0.75rem;margin-bottom:0.25rem;">
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 0.5rem 0;">Current Folder</p>
+                    <button id="rescan-recent-btn"
+                        style="width:100%;background:var(--primary-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">Rescan Outdated (> 1h)</button>
+                    <button id="rescan-all-btn"
+                        style="width:100%;margin-top:0.5rem;background:var(--workflow-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">Rescan All Files</button>
+                </div>
+                <div style="padding-top:0.25rem;">
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 0.5rem 0;">All Folders (incl. SharePoint)</p>
+                    <button id="rescan-all-folders-btn"
+                        style="width:100%;background:var(--success-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">🌐 Rescan All Folders</button>
+                </div>
                 <button id="rescan-cancel-btn"
-                    style="background:var(--surface-hover);color:var(--text-color);border:1px solid var(--border-color);padding:0.75rem;border-radius:8px;cursor:pointer;font-weight:600;">Cancel</button>
+                    style="margin-top:0.5rem;background:var(--surface-hover);color:var(--text-color);border:1px solid var(--border-color);padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">Cancel</button>
             </div>
         </div>
     </div>
@@ -4431,6 +4436,7 @@ async function showNodeSummary(event, fileId) {
         const rescanModalOverlay = document.getElementById('rescan-modal-overlay');
         const rescanRecentBtn = document.getElementById('rescan-recent-btn');
         const rescanAllBtn = document.getElementById('rescan-all-btn');
+        const rescanAllFoldersBtn = document.getElementById('rescan-all-folders-btn');
         const rescanCancelBtn = document.getElementById('rescan-cancel-btn');
 
         function showRescanModal() {
@@ -4455,7 +4461,7 @@ async function showNodeSummary(event, fileId) {
             syncMessage.textContent = 'Rescanning files...';
             syncProgressFill.style.width = '100%';
             syncProgressFill.style.backgroundColor = 'var(--primary-color)';
-            syncProgressFill.classList.add('indeterminate'); // You might want to add CSS animation for this
+            syncProgressFill.classList.add('indeterminate');
 
             fetch('/galleryout/rescan_folder', {
                 method: 'POST',
@@ -4463,6 +4469,42 @@ async function showNodeSummary(event, fileId) {
                 body: JSON.stringify({ folder_key: currentFolderKey, mode: mode })
             })
                 .then(handleGenericResponse)
+                .catch(error => {
+                    handleError(error);
+                    syncOverlay.style.display = 'none';
+                });
+        }
+
+        function performRescanAllFolders() {
+            hideRescanModal();
+            showNotification('Rescanning all folders (including SharePoint)...', 'info');
+
+            // Show sync overlay
+            const syncOverlay = document.getElementById('sync-overlay');
+            const syncMessage = document.getElementById('sync-message');
+            const syncProgressFill = document.getElementById('sync-progress-fill');
+            syncOverlay.style.display = 'flex';
+            syncMessage.textContent = 'Rescanning all folders...';
+            syncProgressFill.style.width = '100%';
+            syncProgressFill.style.backgroundColor = 'var(--success-color)';
+            syncProgressFill.classList.add('indeterminate');
+
+            fetch('/galleryout/rescan_all_folders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'all' })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    syncOverlay.style.display = 'none';
+                    if (data.status === 'success') {
+                        showNotification(data.message, 'success');
+                        // Refresh the current view
+                        startSyncProcess(true);
+                    } else {
+                        showNotification('Rescan failed: ' + (data.message || 'Unknown error'), 'error');
+                    }
+                })
                 .catch(error => {
                     handleError(error);
                     syncOverlay.style.display = 'none';
@@ -4616,6 +4658,7 @@ async function showNodeSummary(event, fileId) {
             document.getElementById('rescan-folder-btn').addEventListener('click', showRescanModal);
             rescanRecentBtn.addEventListener('click', () => performRescan('recent'));
             rescanAllBtn.addEventListener('click', () => performRescan('all'));
+            rescanAllFoldersBtn.addEventListener('click', performRescanAllFolders);
             rescanCancelBtn.addEventListener('click', hideRescanModal);
             document.getElementById('main-select-all-btn').addEventListener('click', selectAll);
             document.getElementById('create-folder-btn').addEventListener('click', createFolder);
