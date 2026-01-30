@@ -366,8 +366,8 @@
             border: 1px solid var(--glass-border);
             border-radius: 12px;
             width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
+            max-width: 650px;
+            max-height: 85vh;
             display: flex;
             flex-direction: column;
         }
@@ -391,28 +391,117 @@
             flex: 1;
             overflow-y: auto;
             padding: 1rem 1.5rem;
+            min-height: 300px;
         }
-        .sp-browser-list {
+        /* Search bar */
+        .sp-search-bar {
+            margin-bottom: 1rem;
+        }
+        .sp-search-bar input {
+            width: 100%;
+            padding: 0.6rem 1rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        .sp-search-bar input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        .sp-search-bar input::placeholder {
+            color: var(--text-muted);
+        }
+        /* Tree view */
+        .sp-tree {
             display: flex;
             flex-direction: column;
-            gap: 0.3rem;
         }
-        .sp-browser-item {
+        .sp-tree-node {
+            display: flex;
+            flex-direction: column;
+        }
+        .sp-tree-row {
             display: flex;
             align-items: center;
-            gap: 0.6rem;
-            padding: 0.5rem 0.8rem;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 6px;
+            gap: 0.3rem;
+            padding: 0.4rem 0.5rem;
+            border-radius: 4px;
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: background 0.15s;
         }
-        .sp-browser-item:hover { border-color: var(--primary-color); }
-        .sp-browser-item.selected { border-color: var(--success-color); background: rgba(32,201,151,0.1); }
-        .sp-browser-item .folder-icon { font-size: 1.2rem; }
-        .sp-browser-item .folder-name { flex: 1; font-size: 0.9rem; }
-        .sp-browser-item .folder-count { font-size: 0.75rem; color: var(--text-muted); }
+        .sp-tree-row:hover {
+            background: var(--glass-bg);
+        }
+        .sp-tree-expand {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .sp-tree-expand:hover {
+            background: var(--border-color);
+        }
+        .sp-tree-expand.loading {
+            color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .sp-tree-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--primary-color);
+            flex-shrink: 0;
+        }
+        .sp-tree-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .sp-tree-name {
+            flex: 1;
+            font-size: 0.9rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sp-tree-count {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .sp-tree-children {
+            margin-left: 1.4rem;
+            border-left: 1px dashed var(--border-color);
+            padding-left: 0.5rem;
+        }
+        .sp-tree-children.collapsed {
+            display: none;
+        }
+        .sp-tree-row.highlighted {
+            background: rgba(59, 130, 246, 0.15);
+        }
+        /* Selection count */
+        .sp-selection-count {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            padding: 0.5rem 0;
+            border-top: 1px solid var(--glass-border);
+            margin-top: 0.5rem;
+        }
+        .sp-selection-count strong {
+            color: var(--primary-color);
+        }
         .sp-modal-footer {
             padding: 1rem 1.5rem;
             border-top: 1px solid var(--glass-border);
@@ -426,7 +515,7 @@
             font-size: 0.8rem;
             color: var(--text-muted);
         }
-        .sp-add-form input {
+        .sp-add-form input[type="text"] {
             width: 100%;
             padding: 0.5rem 0.8rem;
             background: var(--bg-color);
@@ -453,6 +542,12 @@
             text-align: center;
             padding: 2rem;
             color: var(--text-muted);
+        }
+        .sp-no-results {
+            text-align: center;
+            padding: 1.5rem;
+            color: var(--text-muted);
+            font-style: italic;
         }
     </style>
 </head>
@@ -600,33 +695,31 @@
         <div id="sp-folder-modal" class="sp-modal-overlay">
             <div class="sp-modal">
                 <div class="sp-modal-header">
-                    <h3>Add SharePoint Folder</h3>
+                    <h3>Add SharePoint Folders</h3>
                     <button type="button" class="sp-modal-close" onclick="closeSpFolderBrowser()">&times;</button>
                 </div>
                 <div class="sp-modal-body">
-                    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">
-                        Select a folder to sync to your gallery:
-                    </p>
-                    <div class="sp-browser-list" id="sp-browser-list">
-                        <div class="sp-loading">Loading folders from SharePoint...</div>
+                    <div class="sp-search-bar">
+                        <input type="text" id="sp-search-input" placeholder="Search folders..." oninput="filterSpFolders()">
+                    </div>
+                    <div id="sp-tree-container">
+                        <div class="sp-loading" id="sp-tree-loading">Loading folders from SharePoint...</div>
+                        <div class="sp-tree" id="sp-tree" style="display:none;"></div>
+                        <div class="sp-no-results" id="sp-no-results" style="display:none;">No folders match your search</div>
+                    </div>
+                    <div class="sp-selection-count" id="sp-selection-count" style="display:none;">
+                        <strong id="sp-selected-count">0</strong> folder(s) selected
                     </div>
                 </div>
                 <div class="sp-modal-footer" id="sp-modal-footer" style="display:none;">
                     <div class="sp-add-form">
-                        <div>
-                            <label>Selected: <strong id="sp-selected-name">-</strong></label>
-                        </div>
-                        <div>
-                            <label for="sp-local-name">Gallery Folder Name</label>
-                            <input type="text" id="sp-local-name" placeholder="e.g., Marketing Assets">
-                        </div>
                         <div class="checkbox-row">
                             <input type="checkbox" id="sp-include-subfolders" checked>
-                            <label for="sp-include-subfolders" style="margin:0;">Include subfolders</label>
+                            <label for="sp-include-subfolders" style="margin:0;">Include subfolders when syncing</label>
                         </div>
                         <div class="sp-modal-actions">
                             <button class="btn btn-secondary" onclick="closeSpFolderBrowser()">Cancel</button>
-                            <button class="btn btn-primary" onclick="addSelectedSpFolder()">Add Folder</button>
+                            <button class="btn btn-primary" id="sp-add-btn" onclick="addSelectedSpFolders()">Add Selected Folders</button>
                         </div>
                     </div>
                 </div>
@@ -795,7 +888,14 @@
         result.className = 'sp-result info';
         result.textContent = 'Syncing files from SharePoint...';
         fetch('/galleryout/social/sharepoint/sync', {method: 'POST'})
-        .then(r => r.json()).then(data => {
+        .then(r => {
+            if (!r.ok) {
+                return r.text().then(text => {
+                    throw new Error(`Server error (${r.status}): ${text.substring(0, 100)}`);
+                });
+            }
+            return r.json();
+        }).then(data => {
             if (data.error) {
                 result.className = 'sp-result error';
                 result.textContent = 'Sync error: ' + data.error;
@@ -813,16 +913,19 @@
             }
         }).catch(err => {
             result.className = 'sp-result error';
-            result.textContent = 'Request failed: ' + err;
+            result.textContent = 'Sync failed: ' + err.message;
         }).finally(() => {
             btn.disabled = false;
             btn.textContent = 'Sync Now';
         });
     }
 
-    // SharePoint Sync Folder Management
-    let spSelectedFolder = null;
-    let spFolders = [];
+    // SharePoint Sync Folder Management - Tree View with Multi-Select
+    let spTreeData = {};        // Cached folder data by path
+    let spExpandedPaths = {};   // Track which paths are expanded
+    let spSelectedPaths = {};   // Track selected folder paths {path: {name, path}}
+    let spAllFolders = [];      // Flat list of all loaded folders for search
+    let spSearchQuery = '';     // Current search query
 
     function loadSyncFolders() {
         const list = document.getElementById('sp-folder-list');
@@ -863,101 +966,298 @@
     function openSpFolderBrowser() {
         document.getElementById('sp-folder-modal').classList.add('active');
         document.getElementById('sp-modal-footer').style.display = 'none';
-        spSelectedFolder = null;
-        loadSpFolders();
+        document.getElementById('sp-selection-count').style.display = 'none';
+        document.getElementById('sp-search-input').value = '';
+        spSelectedPaths = {};
+        spSearchQuery = '';
+        spTreeData = {};
+        spExpandedPaths = {};
+        spAllFolders = [];
+        loadSpTreeRoot();
     }
 
     function closeSpFolderBrowser() {
         document.getElementById('sp-folder-modal').classList.remove('active');
     }
 
-    function loadSpFolders() {
-        const list = document.getElementById('sp-browser-list');
-        list.innerHTML = '<div class="sp-loading">Loading folders from SharePoint...</div>';
+    // Load root folders using lazy loading endpoint
+    async function loadSpTreeRoot() {
+        const treeEl = document.getElementById('sp-tree');
+        const loadingEl = document.getElementById('sp-tree-loading');
+        const noResultsEl = document.getElementById('sp-no-results');
 
-        fetch('/galleryout/social/sharepoint/folders')
-        .then(r => r.json()).then(data => {
-            spFolders = data.folders || [];
-            if (spFolders.length === 0) {
-                // Add root folder option
-                spFolders = [{name: '(Document Library Root)', path: '', item_count: 0}];
-            } else {
-                // Add root option at the start
-                spFolders.unshift({name: '(Document Library Root)', path: '', item_count: 0});
+        loadingEl.style.display = 'block';
+        treeEl.style.display = 'none';
+        noResultsEl.style.display = 'none';
+
+        try {
+            const resp = await fetch('/galleryout/social/sharepoint/folder-children?path=');
+            const data = await resp.json();
+
+            if (data.error) {
+                loadingEl.textContent = 'Error: ' + data.error;
+                loadingEl.style.color = 'var(--danger-color)';
+                return;
             }
-            renderSpFolders();
-        }).catch(err => {
-            list.innerHTML = '<div class="sp-loading" style="color:var(--danger-color);">Error loading folders: ' + err + '</div>';
-        });
+
+            // Store root folders
+            spTreeData[''] = data.folders || [];
+
+            // Add to flat list for search
+            spAllFolders = [...(data.folders || [])];
+
+            loadingEl.style.display = 'none';
+            treeEl.style.display = 'block';
+
+            renderSpTree();
+        } catch (err) {
+            loadingEl.textContent = 'Error loading folders: ' + err;
+            loadingEl.style.color = 'var(--danger-color)';
+        }
     }
 
-    function renderSpFolders() {
-        const list = document.getElementById('sp-browser-list');
-        list.innerHTML = spFolders.map(f => `
-            <div class="sp-browser-item" data-path="${f.path}" data-name="${f.name}" onclick="selectSpFolder(this)">
-                <span class="folder-icon">📁</span>
-                <span class="folder-name">${f.path || f.name}</span>
-                <span class="folder-count">${f.item_count} items</span>
-            </div>
-        `).join('');
-    }
-
-    function selectSpFolder(el) {
-        // Clear previous selection
-        document.querySelectorAll('.sp-browser-item').forEach(e => e.classList.remove('selected'));
-        el.classList.add('selected');
-
-        spSelectedFolder = {
-            path: el.dataset.path,
-            name: el.dataset.name
-        };
-
-        // Show footer with config options
-        document.getElementById('sp-modal-footer').style.display = 'block';
-        document.getElementById('sp-selected-name').textContent = spSelectedFolder.path || '(Root)';
-        // Suggest a local folder name
-        const suggestedName = spSelectedFolder.path
-            ? 'SP-' + spSelectedFolder.path.split('/').pop()
-            : 'SP-' + '{{ sp_library }}';
-        document.getElementById('sp-local-name').value = suggestedName;
-    }
-
-    function addSelectedSpFolder() {
-        if (!spSelectedFolder) return;
-
-        const localName = document.getElementById('sp-local-name').value.trim();
-        const includeSubfolders = document.getElementById('sp-include-subfolders').checked;
-
-        if (!localName) {
-            alert('Please enter a gallery folder name');
-            return;
+    // Load children for a specific folder path
+    async function loadSpChildren(parentPath, expandBtn) {
+        if (spTreeData[parentPath]) {
+            // Already loaded, just toggle visibility
+            return spTreeData[parentPath];
         }
 
-        fetch('/galleryout/social/sharepoint/sync-folders', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                sp_folder_path: spSelectedFolder.path,
-                sp_folder_name: spSelectedFolder.name,
-                local_folder_name: localName,
-                include_subfolders: includeSubfolders
-            })
-        })
-        .then(r => r.json()).then(data => {
-            if (data.success) {
-                closeSpFolderBrowser();
-                loadSyncFolders();
-                // Show success message
-                const result = document.getElementById('sp-result');
-                result.style.display = 'block';
-                result.className = 'sp-result success';
-                result.textContent = 'Folder added: ' + data.local_folder_name + '. Click "Sync Now" to download files.';
-            } else {
-                alert(data.error || 'Error adding folder');
+        expandBtn.classList.add('loading');
+        expandBtn.textContent = '⟳';
+
+        try {
+            const resp = await fetch('/galleryout/social/sharepoint/folder-children?path=' + encodeURIComponent(parentPath));
+            const data = await resp.json();
+
+            if (data.error) {
+                console.error('Error loading children:', data.error);
+                expandBtn.classList.remove('loading');
+                expandBtn.textContent = '▶';
+                return [];
             }
-        }).catch(err => {
-            alert('Error: ' + err);
-        });
+
+            spTreeData[parentPath] = data.folders || [];
+
+            // Add to flat list for search
+            spAllFolders = [...spAllFolders, ...(data.folders || [])];
+
+            expandBtn.classList.remove('loading');
+            return data.folders || [];
+        } catch (err) {
+            console.error('Error loading children:', err);
+            expandBtn.classList.remove('loading');
+            expandBtn.textContent = '▶';
+            return [];
+        }
+    }
+
+    function renderSpTree() {
+        const treeEl = document.getElementById('sp-tree');
+        const noResultsEl = document.getElementById('sp-no-results');
+
+        if (spSearchQuery) {
+            // Search mode - show flat filtered list
+            const query = spSearchQuery.toLowerCase();
+            const filtered = spAllFolders.filter(f =>
+                f.name.toLowerCase().includes(query) ||
+                f.path.toLowerCase().includes(query)
+            );
+
+            if (filtered.length === 0) {
+                treeEl.style.display = 'none';
+                noResultsEl.style.display = 'block';
+                return;
+            }
+
+            noResultsEl.style.display = 'none';
+            treeEl.style.display = 'block';
+            treeEl.innerHTML = filtered.map(f => renderSearchResultNode(f)).join('');
+        } else {
+            // Tree mode
+            noResultsEl.style.display = 'none';
+            treeEl.style.display = 'block';
+
+            // Add root option at the top
+            let html = renderTreeNode({
+                name: '📚 Document Library Root',
+                path: '',
+                has_children: (spTreeData[''] || []).length > 0,
+                child_count: (spTreeData[''] || []).length,
+                isRoot: true
+            }, 0);
+
+            // Render root-level folders
+            const rootFolders = spTreeData[''] || [];
+            html += rootFolders.map(f => renderTreeNode(f, 0)).join('');
+
+            treeEl.innerHTML = html;
+        }
+    }
+
+    function renderTreeNode(folder, depth) {
+        const isSelected = spSelectedPaths[folder.path] !== undefined;
+        const isExpanded = spExpandedPaths[folder.path];
+        const hasChildren = folder.has_children || folder.child_count > 0;
+        const expandIcon = folder.isRoot ? '' : (hasChildren ? (isExpanded ? '▼' : '▶') : '&nbsp;&nbsp;');
+
+        let html = `
+            <div class="sp-tree-node" data-path="${folder.path}">
+                <div class="sp-tree-row ${isSelected ? 'highlighted' : ''}">
+                    ${!folder.isRoot ? `<span class="sp-tree-expand" onclick="toggleSpExpand('${folder.path}', this)" ${!hasChildren ? 'style="visibility:hidden;"' : ''}>${expandIcon}</span>` : '<span style="width:20px;"></span>'}
+                    <input type="checkbox" class="sp-tree-checkbox"
+                           ${isSelected ? 'checked' : ''}
+                           onchange="toggleSpSelection('${folder.path}', '${folder.name.replace(/'/g, "\\'")}', this)">
+                    <span class="sp-tree-icon">${folder.isRoot ? '' : '📁'}</span>
+                    <span class="sp-tree-name" onclick="toggleSpSelection('${folder.path}', '${folder.name.replace(/'/g, "\\'")}', this.parentElement.querySelector('.sp-tree-checkbox'))">${folder.name}</span>
+                    ${!folder.isRoot && folder.child_count > 0 ? `<span class="sp-tree-count">${folder.child_count}</span>` : ''}
+                </div>`;
+
+        // Render children if expanded
+        if (isExpanded && spTreeData[folder.path]) {
+            html += `<div class="sp-tree-children" id="sp-children-${folder.path.replace(/[^a-zA-Z0-9]/g, '_')}">`;
+            for (const child of spTreeData[folder.path]) {
+                html += renderTreeNode(child, depth + 1);
+            }
+            html += '</div>';
+        } else if (hasChildren && !folder.isRoot) {
+            // Placeholder for children (collapsed)
+            html += `<div class="sp-tree-children collapsed" id="sp-children-${folder.path.replace(/[^a-zA-Z0-9]/g, '_')}"></div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderSearchResultNode(folder) {
+        const isSelected = spSelectedPaths[folder.path] !== undefined;
+        return `
+            <div class="sp-tree-node" data-path="${folder.path}">
+                <div class="sp-tree-row ${isSelected ? 'highlighted' : ''}">
+                    <span style="width:20px;"></span>
+                    <input type="checkbox" class="sp-tree-checkbox"
+                           ${isSelected ? 'checked' : ''}
+                           onchange="toggleSpSelection('${folder.path}', '${folder.name.replace(/'/g, "\\'")}', this)">
+                    <span class="sp-tree-icon">📁</span>
+                    <span class="sp-tree-name" onclick="toggleSpSelection('${folder.path}', '${folder.name.replace(/'/g, "\\'")}', this.parentElement.querySelector('.sp-tree-checkbox'))">${folder.path || folder.name}</span>
+                </div>
+            </div>`;
+    }
+
+    async function toggleSpExpand(path, expandBtn) {
+        if (spExpandedPaths[path]) {
+            // Collapse
+            delete spExpandedPaths[path];
+            expandBtn.textContent = '▶';
+            const childrenEl = document.getElementById('sp-children-' + path.replace(/[^a-zA-Z0-9]/g, '_'));
+            if (childrenEl) childrenEl.classList.add('collapsed');
+        } else {
+            // Expand - load children if needed
+            const children = await loadSpChildren(path, expandBtn);
+            spExpandedPaths[path] = true;
+            expandBtn.textContent = '▼';
+
+            // Re-render the tree to show children
+            renderSpTree();
+        }
+    }
+
+    function toggleSpSelection(path, name, checkbox) {
+        if (checkbox.checked || !spSelectedPaths[path]) {
+            spSelectedPaths[path] = { path, name };
+            checkbox.checked = true;
+        } else {
+            delete spSelectedPaths[path];
+            checkbox.checked = false;
+        }
+
+        // Update selection count and footer visibility
+        const count = Object.keys(spSelectedPaths).length;
+        const countEl = document.getElementById('sp-selection-count');
+        const footerEl = document.getElementById('sp-modal-footer');
+        const countNumEl = document.getElementById('sp-selected-count');
+
+        countNumEl.textContent = count;
+        countEl.style.display = count > 0 ? 'block' : 'none';
+        footerEl.style.display = count > 0 ? 'block' : 'none';
+
+        // Update button text
+        document.getElementById('sp-add-btn').textContent =
+            count === 1 ? 'Add Selected Folder' : `Add ${count} Selected Folders`;
+
+        // Highlight the row
+        const row = checkbox.closest('.sp-tree-row');
+        if (row) {
+            row.classList.toggle('highlighted', checkbox.checked);
+        }
+    }
+
+    function filterSpFolders() {
+        const input = document.getElementById('sp-search-input');
+        spSearchQuery = input.value.trim();
+        renderSpTree();
+    }
+
+    async function addSelectedSpFolders() {
+        const selected = Object.values(spSelectedPaths);
+        if (selected.length === 0) return;
+
+        const includeSubfolders = document.getElementById('sp-include-subfolders').checked;
+        const btn = document.getElementById('sp-add-btn');
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        let successCount = 0;
+        let errorMessages = [];
+
+        for (const folder of selected) {
+            // Generate local name: SP-{foldername}
+            const localName = folder.path
+                ? 'SP-' + folder.path.split('/').pop()
+                : 'SP-{{ sp_library }}';
+
+            try {
+                const resp = await fetch('/galleryout/social/sharepoint/sync-folders', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        sp_folder_path: folder.path,
+                        sp_folder_name: folder.name,
+                        local_folder_name: localName,
+                        include_subfolders: includeSubfolders
+                    })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    successCount++;
+                } else {
+                    errorMessages.push(`${folder.name}: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                errorMessages.push(`${folder.name}: ${err}`);
+            }
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Add Selected Folders';
+
+        // Show result
+        const result = document.getElementById('sp-result');
+        result.style.display = 'block';
+
+        if (successCount > 0) {
+            closeSpFolderBrowser();
+            loadSyncFolders();
+            result.className = 'sp-result success';
+            result.textContent = `${successCount} folder(s) added. Click "Sync Now" to download files.`;
+            if (errorMessages.length > 0) {
+                result.textContent += ` (${errorMessages.length} failed)`;
+            }
+        } else {
+            result.className = 'sp-result error';
+            result.textContent = 'Failed to add folders: ' + errorMessages.join('; ');
+        }
     }
 
     function removeSyncFolder(folderId) {

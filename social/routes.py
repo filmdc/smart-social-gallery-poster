@@ -1360,6 +1360,26 @@ def register_routes(bp, db_path):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @bp.route('/sharepoint/folder-children')
+    @admin_required
+    def sharepoint_folder_children():
+        """List immediate children of a SharePoint folder (for lazy-loading tree).
+
+        Query params:
+            path: Folder path (empty/omitted for root)
+
+        Returns: JSON with 'folders' list containing name, path, has_children, child_count
+        """
+        from social.sharepoint import sharepoint_available, list_folder_children
+        if not sharepoint_available():
+            return jsonify({'error': 'SharePoint not configured'}), 400
+        folder_path = request.args.get('path', '')
+        try:
+            folders = list_folder_children(folder_path)
+            return jsonify({'folders': folders, 'parent_path': folder_path})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @bp.route('/sharepoint/files')
     @admin_required
     def sharepoint_files():
@@ -1412,17 +1432,19 @@ def register_routes(bp, db_path):
     @admin_required
     def sharepoint_sync():
         """Trigger a manual SharePoint sync of configured folders."""
-        from social.sharepoint import sharepoint_available, sync_configured_folders
-        from smartgallery import BASE_OUTPUT_PATH, DB_PATH
-        if not sharepoint_available():
-            return jsonify({'error': 'SharePoint not configured'}), 400
         try:
+            from social.sharepoint import sharepoint_available, sync_configured_folders
+            from smartgallery import BASE_OUTPUT_PATH, DB_PATH
+            if not sharepoint_available():
+                return jsonify({'error': 'SharePoint not configured'}), 400
             results = sync_configured_folders(BASE_OUTPUT_PATH, _db_path, DB_PATH)
             if 'error' in results:
                 return jsonify({'error': results['error']}), 500
             total_synced = sum(r.get('synced', 0) for r in results.values())
             return jsonify({'synced_count': total_synced, 'folders': results})
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 
     @bp.route('/sharepoint/sync-folders', methods=['GET'])

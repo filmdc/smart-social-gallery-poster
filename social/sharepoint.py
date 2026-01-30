@@ -587,6 +587,57 @@ def _list_subfolders(drive_id, folder_path, folders_list, token):
             _list_subfolders(drive_id, child_path, folders_list, token)
 
 
+def list_folder_children(folder_path=''):
+    """
+    List immediate children folders of a given folder path (non-recursive).
+
+    This is used for lazy-loading the folder tree in the UI.
+
+    Args:
+        folder_path: Path to the parent folder, empty string for root
+
+    Returns:
+        List of dicts with keys: name, path, has_children, child_count
+    """
+    token = _get_access_token()
+    if not token:
+        return []
+
+    site_id = _get_site_id()
+    drive_id = _get_drive_id(site_id)
+    if not drive_id:
+        return []
+
+    if folder_path:
+        url = f'{GRAPH_BASE}/drives/{drive_id}/root:/{folder_path}:/children'
+    else:
+        url = f'{GRAPH_BASE}/drives/{drive_id}/root/children'
+
+    resp = requests.get(
+        url,
+        headers={'Authorization': f'Bearer {token}'},
+        params={'$top': 200, '$filter': "folder ne null"},
+        timeout=15,
+    )
+    if not resp.ok:
+        logger.warning(f"Failed to list folder children: {resp.status_code} - {resp.text}")
+        return []
+
+    folders = []
+    for item in resp.json().get('value', []):
+        if 'folder' in item:
+            child_path = f"{folder_path}/{item['name']}" if folder_path else item['name']
+            child_count = item['folder'].get('childCount', 0)
+            folders.append({
+                'name': item['name'],
+                'path': child_path,
+                'child_count': child_count,
+                'has_children': child_count > 0,  # Indicates if folder can be expanded
+            })
+
+    return sorted(folders, key=lambda f: f['name'].lower())
+
+
 def start_background_sync(base_output_path, interval=None, gallery_db_path=None, social_db_path=None):
     """Start a background thread that periodically syncs configured SharePoint folders.
 
