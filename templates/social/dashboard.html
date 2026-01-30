@@ -361,8 +361,13 @@
                         <button class="btn btn-warning btn-sm" onclick="publishPost('{{ post.id }}')">Retry</button>
                     {% endif %}
 
-                    {% if post.status != 'publishing' %}
-                    <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
+                    {# Delete button: admins can delete any post, others can delete non-published posts #}
+                    {% if post.status == 'published' %}
+                        {% if current_user.can_post_without_approval %}
+                        <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
+                        {% endif %}
+                    {% elif post.status != 'publishing' %}
+                        <button class="btn btn-danger btn-sm" onclick="deletePost('{{ post.id }}')">Delete</button>
                     {% endif %}
                 </div>
             </div>
