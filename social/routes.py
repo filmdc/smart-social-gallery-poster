@@ -1879,6 +1879,13 @@ def register_routes(bp, db_path):
 
     # --- MAINTENANCE ENDPOINTS ---
 
+    def _ensure_maintenance_module():
+        """Ensure the maintenance module can be imported by adding app root to path."""
+        import sys
+        app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if app_root not in sys.path:
+            sys.path.insert(0, app_root)
+
     @bp.route('/maintenance/status', methods=['GET'])
     @login_required
     @admin_required
@@ -1886,6 +1893,7 @@ def register_routes(bp, db_path):
         """Get cache disk usage and maintenance status (admin only)."""
         try:
             from smartgallery import BASE_SMARTGALLERY_PATH, DATABASE_FILE
+            _ensure_maintenance_module()
             from maintenance import get_disk_usage_report
             report = get_disk_usage_report(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
             return jsonify({
@@ -1920,6 +1928,7 @@ def register_routes(bp, db_path):
 
         try:
             from smartgallery import BASE_SMARTGALLERY_PATH, DATABASE_FILE
+            _ensure_maintenance_module()
             from maintenance import run_all_maintenance
             results = run_all_maintenance(BASE_SMARTGALLERY_PATH, DATABASE_FILE, aggressive=aggressive)
 
