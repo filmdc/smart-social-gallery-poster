@@ -1547,7 +1547,79 @@
                 healthRecs.style.display = 'none';
             }
 
-            // Cache breakdown
+            // Helper function to format size
+            const formatSize = (bytes) => {
+                if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+                if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                return (bytes / 1024).toFixed(1) + ' KB';
+            };
+
+            let breakdownHtml = '';
+
+            // === DISK USAGE OVERVIEW ===
+            breakdownHtml += '<div style="margin-bottom:1rem;"><strong style="color:var(--text-color);">Disk Usage Overview</strong></div>';
+            breakdownHtml += '<div style="display:grid;gap:0.5rem;margin-bottom:1.5rem;">';
+
+            const overviewItems = [
+                { key: 'media_total', label: 'Media Files', icon: '📁', color: '#667eea' },
+                { key: 'cache_total', label: 'Cache & Temp', icon: '🗂️', color: '#f5576c' },
+                { key: 'other_system', label: 'System & Other', icon: '💻', color: '#6c757d' },
+            ];
+
+            const volumeUsed = volume.used_bytes || 0;
+            for (const item of overviewItems) {
+                const data = usage[item.key];
+                if (!data) continue;
+                const sizeBytes = data.size_bytes || 0;
+                const percent = volumeUsed > 0 ? (sizeBytes / volumeUsed * 100).toFixed(1) : 0;
+                const fileCount = data.file_count;
+
+                breakdownHtml += `
+                    <div style="padding:0.6rem;background:var(--bg-color);border-radius:4px;border-left:3px solid ${item.color};">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span>${item.icon} ${item.label}</span>
+                            <span style="font-family:monospace;font-weight:600;">${formatSize(sizeBytes)}</span>
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;">
+                            ${percent}% of used space${fileCount !== undefined ? ` • ${fileCount.toLocaleString()} files` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            breakdownHtml += '</div>';
+
+            // === MEDIA BREAKDOWN ===
+            breakdownHtml += '<div style="margin-bottom:0.5rem;"><strong style="color:var(--text-color);">Media Files Breakdown</strong></div>';
+            breakdownHtml += '<div style="display:grid;gap:0.3rem;margin-bottom:1.5rem;">';
+
+            const mediaItems = [
+                { key: 'media_images', label: 'Images', icon: '🖼️' },
+                { key: 'media_videos', label: 'Videos', icon: '🎥' },
+                { key: 'media_audio', label: 'Audio', icon: '🎵' },
+                { key: 'media_other', label: 'Other Files', icon: '📄' },
+            ];
+
+            for (const item of mediaItems) {
+                const data = usage[item.key];
+                if (!data || data.file_count === 0) continue;
+                const topExts = data.top_extensions ? data.top_extensions.slice(0, 3).map(e => e[0]).join(', ') : '';
+
+                breakdownHtml += `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.6rem;background:var(--glass-bg);border-radius:4px;">
+                        <span style="font-size:0.9rem;">${item.icon} ${item.label}</span>
+                        <span style="font-family:monospace;font-size:0.9rem;">
+                            <strong>${formatSize(data.size_bytes)}</strong>
+                            <span style="color:var(--text-muted);font-size:0.75rem;margin-left:0.5rem;">(${data.file_count.toLocaleString()} files${topExts ? ' • ' + topExts : ''})</span>
+                        </span>
+                    </div>
+                `;
+            }
+            breakdownHtml += '</div>';
+
+            // === CACHE BREAKDOWN ===
+            breakdownHtml += '<div style="margin-bottom:0.5rem;"><strong style="color:var(--text-color);">Cache & Temp Breakdown</strong></div>';
+            breakdownHtml += '<div style="display:grid;gap:0.3rem;">';
+
             const cacheItems = [
                 { key: 'thumbnails', label: 'Thumbnails', icon: '🖼️' },
                 { key: 'zip', label: 'ZIP Downloads', icon: '📦' },
@@ -1556,38 +1628,25 @@
                 { key: 'database', label: 'Database', icon: '🗄️' },
             ];
 
-            let breakdownHtml = '<div style="display:grid;gap:0.5rem;">';
             for (const item of cacheItems) {
                 const cache = usage[item.key];
                 if (!cache) continue;
-                const sizeMb = cache.size_mb || 0;
-                const sizeDisplay = sizeMb >= 1024 ? (sizeMb/1024).toFixed(2) + ' GB' : sizeMb.toFixed(1) + ' MB';
                 const fileCount = cache.file_count || 0;
                 const ageInfo = cache.oldest_file_age_hours ?
                     `oldest: ${cache.oldest_file_age_hours.toFixed(0)}h` : '';
 
                 breakdownHtml += `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem;background:var(--bg-color);border-radius:4px;">
-                        <span>${item.icon} ${item.label}</span>
-                        <span style="font-family:monospace;">
-                            <strong>${sizeDisplay}</strong>
-                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:0.5rem;">(${fileCount} files${ageInfo ? ', ' + ageInfo : ''})</span>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.6rem;background:var(--glass-bg);border-radius:4px;">
+                        <span style="font-size:0.9rem;">${item.icon} ${item.label}</span>
+                        <span style="font-family:monospace;font-size:0.9rem;">
+                            <strong>${formatSize(cache.size_bytes)}</strong>
+                            <span style="color:var(--text-muted);font-size:0.75rem;margin-left:0.5rem;">(${fileCount} files${ageInfo ? ', ' + ageInfo : ''})</span>
                         </span>
                     </div>
                 `;
             }
-
-            // Total cache usage
-            const totalCache = usage.cache_total;
-            const totalDisplay = totalCache.size_gb >= 1 ?
-                totalCache.size_gb.toFixed(2) + ' GB' : totalCache.size_mb.toFixed(1) + ' MB';
-            breakdownHtml += `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem;background:var(--surface-hover);border-radius:4px;font-weight:600;">
-                    <span>Total Cache Usage</span>
-                    <span style="font-family:monospace;">${totalDisplay}</span>
-                </div>
-            `;
             breakdownHtml += '</div>';
+
             cacheBreakdown.innerHTML = breakdownHtml;
 
             // Retention settings
