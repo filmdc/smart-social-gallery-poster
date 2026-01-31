@@ -281,10 +281,40 @@ SITE_TAGLINE = os.environ.get('SITE_TAGLINE', '')
 SITE_LOGO_PATH = os.environ.get('SITE_LOGO_PATH', '')
 
 def get_branding():
-    """Get the current branding configuration as a dictionary."""
+    """Get the current branding configuration as a dictionary.
+
+    Priority: Database settings > Environment variables > Defaults
+    """
+    # Try to get settings from database first
+    db_site_name = None
+    db_site_tagline = None
+    db_logo_filename = None
+
+    try:
+        from social.models import get_branding_settings
+        db_settings = get_branding_settings(DATABASE_FILE)
+        db_site_name = db_settings.get('site_name')
+        db_site_tagline = db_settings.get('site_tagline')
+        db_logo_filename = db_settings.get('site_logo_filename')
+    except Exception:
+        pass  # Database might not be initialized yet
+
+    # Use database values if set, otherwise fall back to env vars
+    site_name = db_site_name if db_site_name else SITE_NAME
+    site_tagline = db_site_tagline if db_site_tagline else SITE_TAGLINE
+
+    # Determine logo URL - check database logo first, then env var
     logo_url = None
-    if SITE_LOGO_PATH:
-        # Check if logo file exists
+
+    # Check for database-uploaded logo in .branding directory
+    if db_logo_filename:
+        branding_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.branding')
+        logo_path = os.path.join(branding_dir, db_logo_filename)
+        if os.path.isfile(logo_path):
+            logo_url = '/galleryout/branding/logo'
+
+    # Fall back to environment variable logo path
+    if not logo_url and SITE_LOGO_PATH:
         logo_path = SITE_LOGO_PATH
         if not os.path.isabs(logo_path):
             logo_path = os.path.join(BASE_SMARTGALLERY_PATH, logo_path)
@@ -292,8 +322,8 @@ def get_branding():
             logo_url = '/galleryout/branding/logo'
 
     return {
-        'site_name': SITE_NAME,
-        'site_tagline': SITE_TAGLINE,
+        'site_name': site_name,
+        'site_tagline': site_tagline,
         'site_logo_url': logo_url,
         'has_logo': logo_url is not None
     }
@@ -1570,15 +1600,34 @@ def require_authentication():
 
 @app.route('/galleryout/branding/logo')
 def serve_branding_logo():
-    """Serve the custom branding logo if configured."""
-    if not SITE_LOGO_PATH:
-        abort(404)
+    """Serve the custom branding logo if configured.
 
-    logo_path = SITE_LOGO_PATH
-    if not os.path.isabs(logo_path):
-        logo_path = os.path.join(BASE_SMARTGALLERY_PATH, logo_path)
+    Priority: Database-uploaded logo > Environment variable logo
+    """
+    logo_path = None
 
-    if not os.path.isfile(logo_path):
+    # First, check for database-uploaded logo in .branding directory
+    try:
+        from social.models import get_branding_settings
+        db_settings = get_branding_settings(DATABASE_FILE)
+        db_logo_filename = db_settings.get('site_logo_filename')
+        if db_logo_filename:
+            branding_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.branding')
+            candidate_path = os.path.join(branding_dir, db_logo_filename)
+            if os.path.isfile(candidate_path):
+                logo_path = candidate_path
+    except Exception:
+        pass
+
+    # Fall back to environment variable logo path
+    if not logo_path and SITE_LOGO_PATH:
+        candidate_path = SITE_LOGO_PATH
+        if not os.path.isabs(candidate_path):
+            candidate_path = os.path.join(BASE_SMARTGALLERY_PATH, candidate_path)
+        if os.path.isfile(candidate_path):
+            logo_path = candidate_path
+
+    if not logo_path:
         abort(404)
 
     # Determine content type based on extension

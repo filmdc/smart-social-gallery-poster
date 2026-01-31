@@ -1227,6 +1227,10 @@ def register_routes(bp, db_path):
                 for _root, _dirs, _files in os.walk(sp_cache_dir):
                     sp_cache_count += len(_files)
 
+            # Branding settings (database values)
+            from social.models import get_branding_settings
+            db_branding = get_branding_settings(_db_path)
+
             return render_template('social/settings.html',
                                    accounts=[dict(a) for a in accounts],
                                    users=[dict(u) for u in users],
@@ -1243,9 +1247,146 @@ def register_routes(bp, db_path):
                                    # Email configuration
                                    email_configured=_email_configured(),
                                    email_from=_get_email_from(),
-                                   email_host=_get_email_host())
+                                   email_host=_get_email_host(),
+                                   # Branding settings from database
+                                   db_branding=db_branding)
         finally:
             conn.close()
+
+    # =========================================================================
+    # BRANDING SETTINGS
+    # =========================================================================
+
+    @bp.route('/settings/branding', methods=['GET'])
+    @admin_required
+    def get_branding_api():
+        """Get current branding settings."""
+        from social.models import get_branding_settings
+        from smartgallery import SITE_NAME, SITE_TAGLINE, SITE_LOGO_PATH
+
+        db_settings = get_branding_settings(_db_path)
+
+        return jsonify({
+            'success': True,
+            'settings': {
+                'site_name': db_settings.get('site_name') or '',
+                'site_tagline': db_settings.get('site_tagline') or '',
+                'site_logo_filename': db_settings.get('site_logo_filename') or '',
+            },
+            'env_defaults': {
+                'site_name': SITE_NAME,
+                'site_tagline': SITE_TAGLINE,
+                'site_logo_path': SITE_LOGO_PATH,
+            }
+        })
+
+    @bp.route('/settings/branding', methods=['POST'])
+    @admin_required
+    def update_branding():
+        """Update branding settings."""
+        from social.models import set_branding_settings
+
+        data = request.get_json() if request.is_json else {}
+
+        site_name = data.get('site_name', '').strip()
+        site_tagline = data.get('site_tagline', '').strip()
+
+        set_branding_settings(
+            _db_path,
+            site_name=site_name if site_name else None,
+            site_tagline=site_tagline if site_tagline else None,
+            user_id=current_user.id
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Branding settings updated successfully'
+        })
+
+    @bp.route('/settings/branding/logo', methods=['POST'])
+    @admin_required
+    def upload_branding_logo():
+        """Upload a custom logo for branding."""
+        from social.models import set_branding_settings
+        from smartgallery import BASE_SMARTGALLERY_PATH
+        from werkzeug.utils import secure_filename
+
+        if 'logo' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+
+        file = request.files['logo']
+        if not file.filename:
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+
+        # Validate file extension
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif'}
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in allowed_extensions:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid file type. Allowed: {", ".join(allowed_extensions)}'
+            }), 400
+
+        # Create branding directory if it doesn't exist
+        branding_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.branding')
+        os.makedirs(branding_dir, exist_ok=True)
+
+        # Save with a consistent filename (overwrite previous)
+        filename = f'logo{ext}'
+        filepath = os.path.join(branding_dir, filename)
+
+        # Remove any existing logo files
+        for existing in os.listdir(branding_dir):
+            if existing.startswith('logo.'):
+                try:
+                    os.remove(os.path.join(branding_dir, existing))
+                except OSError:
+                    pass
+
+        file.save(filepath)
+
+        # Update database with the logo filename
+        set_branding_settings(
+            _db_path,
+            logo_filename=filename,
+            user_id=current_user.id
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Logo uploaded successfully',
+            'filename': filename
+        })
+
+    @bp.route('/settings/branding/logo', methods=['DELETE'])
+    @admin_required
+    def delete_branding_logo():
+        """Remove the custom branding logo."""
+        from social.models import set_branding_settings
+        from smartgallery import BASE_SMARTGALLERY_PATH
+
+        branding_dir = os.path.join(BASE_SMARTGALLERY_PATH, '.branding')
+
+        # Remove any existing logo files
+        if os.path.isdir(branding_dir):
+            for existing in os.listdir(branding_dir):
+                if existing.startswith('logo.'):
+                    try:
+                        os.remove(os.path.join(branding_dir, existing))
+                    except OSError:
+                        pass
+
+        # Clear the logo filename in database
+        set_branding_settings(
+            _db_path,
+            logo_filename='',
+            user_id=current_user.id
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Logo removed successfully'
+        })
 
     @bp.route('/accounts/<account_id>', methods=['DELETE'])
     @admin_required

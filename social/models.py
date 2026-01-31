@@ -7,7 +7,7 @@ tables and schema versioning via a social_meta table.
 
 import sqlite3
 
-SOCIAL_SCHEMA_VERSION = 5
+SOCIAL_SCHEMA_VERSION = 6
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS social_meta (
@@ -173,6 +173,14 @@ CREATE TABLE IF NOT EXISTS sharepoint_sync_folders (
     created_by TEXT,
     UNIQUE(sp_folder_path),
     FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at REAL,
+    updated_by TEXT,
+    FOREIGN KEY (updated_by) REFERENCES users(id)
 );
 """
 
@@ -346,3 +354,71 @@ def _run_migrations(conn, from_version, to_version):
             )
         """)
         conn.commit()
+
+    if from_version < 6:
+        # Add app_settings table for branding and other application settings
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at REAL,
+                updated_by TEXT,
+                FOREIGN KEY (updated_by) REFERENCES users(id)
+            )
+        """)
+        conn.commit()
+
+
+# =========================================================================
+# APP SETTINGS HELPERS
+# =========================================================================
+
+def get_app_setting(db_path, key, default=None):
+    """Get an application setting value from the database."""
+    conn = get_social_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row['value'] if row else default
+    except sqlite3.OperationalError:
+        return default
+    finally:
+        conn.close()
+
+
+def set_app_setting(db_path, key, value, user_id=None):
+    """Set an application setting value in the database."""
+    import time
+    conn = get_social_db(db_path)
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO app_settings (key, value, updated_at, updated_by)
+               VALUES (?, ?, ?, ?)""",
+            (key, value, time.time(), user_id)
+        )
+        conn.commit()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        conn.close()
+
+
+def get_branding_settings(db_path):
+    """Get all branding settings from the database."""
+    return {
+        'site_name': get_app_setting(db_path, 'branding_site_name'),
+        'site_tagline': get_app_setting(db_path, 'branding_site_tagline'),
+        'site_logo_filename': get_app_setting(db_path, 'branding_site_logo_filename'),
+    }
+
+
+def set_branding_settings(db_path, site_name=None, site_tagline=None, logo_filename=None, user_id=None):
+    """Set branding settings in the database."""
+    if site_name is not None:
+        set_app_setting(db_path, 'branding_site_name', site_name, user_id)
+    if site_tagline is not None:
+        set_app_setting(db_path, 'branding_site_tagline', site_tagline, user_id)
+    if logo_filename is not None:
+        set_app_setting(db_path, 'branding_site_logo_filename', logo_filename, user_id)
