@@ -13,6 +13,7 @@ for system recovery after disk space issues.
 """
 
 import os
+import shutil
 import time
 import logging
 import sqlite3
@@ -31,6 +32,11 @@ ZIP_RETENTION_HOURS = int(os.environ.get('ZIP_RETENTION_HOURS', '24'))
 SMASHCUT_RETENTION_HOURS = int(os.environ.get('SMASHCUT_RETENTION_HOURS', '168'))  # 7 days
 THUMBNAIL_ORPHAN_CHECK_DAYS = int(os.environ.get('THUMBNAIL_ORPHAN_CHECK_DAYS', '7'))
 
+# Storage alert thresholds (percentage of disk used)
+STORAGE_WARNING_THRESHOLD = int(os.environ.get('STORAGE_WARNING_THRESHOLD', '80'))
+STORAGE_CRITICAL_THRESHOLD = int(os.environ.get('STORAGE_CRITICAL_THRESHOLD', '90'))
+STORAGE_EMERGENCY_THRESHOLD = int(os.environ.get('STORAGE_EMERGENCY_THRESHOLD', '95'))
+
 # Track maintenance state
 _maintenance_lock = threading.Lock()
 _maintenance_running = False
@@ -46,6 +52,163 @@ def get_cache_dirs(base_smartgallery_path):
         'sharepoint': os.path.join(base_smartgallery_path, '.sharepoint_cache'),
         'sqlite': os.path.join(base_smartgallery_path, '.sqlite_cache'),
     }
+
+
+def get_volume_disk_space(path):
+    """
+    Get disk space information for the volume containing the given path.
+
+    Args:
+        path: Any path on the volume to check
+
+    Returns:
+        dict with 'total_bytes', 'used_bytes', 'free_bytes', 'percent_used'
+    """
+    try:
+        # Use shutil.disk_usage which works cross-platform
+        usage = shutil.disk_usage(path)
+        total = usage.total
+        free = usage.free
+        used = usage.used
+
+        return {
+            'total_bytes': total,
+            'used_bytes': used,
+            'free_bytes': free,
+            'total_gb': total / (1024 ** 3),
+            'used_gb': used / (1024 ** 3),
+            'free_gb': free / (1024 ** 3),
+            'percent_used': (used / total * 100) if total > 0 else 0,
+            'percent_free': (free / total * 100) if total > 0 else 0,
+        }
+    except OSError as e:
+        logger.error(f"Error getting disk usage for {path}: {e}")
+        return {
+            'total_bytes': 0,
+            'used_bytes': 0,
+            'free_bytes': 0,
+            'total_gb': 0,
+            'used_gb': 0,
+            'free_gb': 0,
+            'percent_used': 0,
+            'percent_free': 0,
+            'error': str(e)
+        }
+
+
+def get_storage_health(base_smartgallery_path):
+    """
+    Get storage health status with alerts based on thresholds.
+
+    Args:
+        base_smartgallery_path: Base path to check volume for
+
+    Returns:
+        dict with 'status', 'level', 'message', 'percent_used', 'recommendations'
+    """
+    disk_info = get_volume_disk_space(base_smartgallery_path)
+
+    if disk_info.get('error'):
+        return {
+            'status': 'unknown',
+            'level': 'error',
+            'message': f"Cannot determine disk status: {disk_info['error']}",
+            'percent_used': 0,
+            'recommendations': ['Check disk accessibility']
+        }
+
+    percent_used = disk_info['percent_used']
+    free_gb = disk_info['free_gb']
+
+    if percent_used >= STORAGE_EMERGENCY_THRESHOLD:
+        return {
+            'status': 'emergency',
+            'level': 'emergency',
+            'message': f"EMERGENCY: Disk {percent_used:.1f}% full! Only {free_gb:.1f}GB free. Immediate action required.",
+            'percent_used': percent_used,
+            'free_gb': free_gb,
+            'recommendations': [
+                'Run aggressive maintenance immediately',
+                'Delete unnecessary files',
+                'Consider expanding storage',
+                'Clear smashcut output files',
+                'Remove old ZIP downloads'
+            ]
+        }
+    elif percent_used >= STORAGE_CRITICAL_THRESHOLD:
+        return {
+            'status': 'critical',
+            'level': 'critical',
+            'message': f"CRITICAL: Disk {percent_used:.1f}% full. Only {free_gb:.1f}GB remaining.",
+            'percent_used': percent_used,
+            'free_gb': free_gb,
+            'recommendations': [
+                'Run maintenance cleanup',
+                'Review and delete old smashcut videos',
+                'Clear ZIP download cache',
+                'Consider expanding storage soon'
+            ]
+        }
+    elif percent_used >= STORAGE_WARNING_THRESHOLD:
+        return {
+            'status': 'warning',
+            'level': 'warning',
+            'message': f"Warning: Disk {percent_used:.1f}% full. {free_gb:.1f}GB remaining.",
+            'percent_used': percent_used,
+            'free_gb': free_gb,
+            'recommendations': [
+                'Schedule maintenance cleanup',
+                'Monitor storage growth',
+                'Consider reducing retention periods'
+            ]
+        }
+    else:
+        return {
+            'status': 'healthy',
+            'level': 'ok',
+            'message': f"Storage healthy: {percent_used:.1f}% used, {free_gb:.1f}GB free.",
+            'percent_used': percent_used,
+            'free_gb': free_gb,
+            'recommendations': []
+        }
+
+
+def check_storage_and_auto_cleanup(base_smartgallery_path, database_file):
+    """
+    Check storage levels and trigger automatic cleanup if thresholds exceeded.
+
+    This is called periodically by the scheduler to prevent disk full situations.
+
+    Args:
+        base_smartgallery_path: Base path for gallery storage
+        database_file: Path to the database file
+
+    Returns:
+        dict with 'action_taken', 'health_before', 'health_after', 'cleanup_results'
+    """
+    health = get_storage_health(base_smartgallery_path)
+    result = {
+        'action_taken': None,
+        'health_before': health,
+        'health_after': None,
+        'cleanup_results': None
+    }
+
+    if health['status'] == 'emergency':
+        logger.warning(f"EMERGENCY storage level detected: {health['percent_used']:.1f}%")
+        logger.info("Triggering automatic aggressive cleanup...")
+        result['action_taken'] = 'aggressive_cleanup'
+        result['cleanup_results'] = run_all_maintenance(base_smartgallery_path, database_file, aggressive=True)
+        result['health_after'] = get_storage_health(base_smartgallery_path)
+
+    elif health['status'] == 'critical':
+        logger.warning(f"Critical storage level detected: {health['percent_used']:.1f}%")
+        logger.info("Triggering automatic cleanup...")
+        result['action_taken'] = 'normal_cleanup'
+        result['cleanup_results'] = run_all_maintenance(base_smartgallery_path, database_file, aggressive=False)
+        result['health_after'] = get_storage_health(base_smartgallery_path)
+
+    return result
 
 
 def cleanup_zip_cache(zip_cache_dir, max_age_hours=None):
@@ -400,14 +563,14 @@ def vacuum_database(database_file):
 
 def get_disk_usage_report(base_smartgallery_path, database_file):
     """
-    Generate a report of disk usage by cache directories.
+    Generate a comprehensive report of disk usage including volume info and cache directories.
 
     Args:
         base_smartgallery_path: Base path for gallery storage
         database_file: Path to the SQLite database
 
     Returns:
-        dict with size information for each cache type
+        dict with size information for each cache type and volume info
     """
     cache_dirs = get_cache_dirs(base_smartgallery_path)
     report = {}
@@ -419,14 +582,22 @@ def get_disk_usage_report(base_smartgallery_path, database_file):
 
         total_size = 0
         file_count = 0
+        oldest_file = None
+        newest_file = None
 
         try:
             for root, dirs, files in os.walk(path):
                 for filename in files:
                     filepath = os.path.join(root, filename)
                     try:
-                        total_size += os.path.getsize(filepath)
+                        stat = os.stat(filepath)
+                        total_size += stat.st_size
                         file_count += 1
+                        mtime = stat.st_mtime
+                        if oldest_file is None or mtime < oldest_file:
+                            oldest_file = mtime
+                        if newest_file is None or mtime > newest_file:
+                            newest_file = mtime
                     except OSError:
                         pass
         except OSError:
@@ -436,30 +607,54 @@ def get_disk_usage_report(base_smartgallery_path, database_file):
             'exists': True,
             'size_bytes': total_size,
             'size_mb': total_size / 1024 / 1024,
+            'size_gb': total_size / (1024 ** 3),
             'file_count': file_count,
-            'path': path
+            'path': path,
+            'oldest_file_age_hours': (time.time() - oldest_file) / 3600 if oldest_file else None,
+            'newest_file_age_hours': (time.time() - newest_file) / 3600 if newest_file else None,
         }
 
     # Add database info
     if os.path.exists(database_file):
         db_size = os.path.getsize(database_file)
         wal_file = database_file + '-wal'
+        wal_size = 0
         if os.path.exists(wal_file):
-            db_size += os.path.getsize(wal_file)
+            wal_size = os.path.getsize(wal_file)
+            db_size += wal_size
 
         report['database'] = {
             'exists': True,
             'size_bytes': db_size,
             'size_mb': db_size / 1024 / 1024,
+            'size_gb': db_size / (1024 ** 3),
             'file_count': 1,
-            'path': database_file
+            'path': database_file,
+            'wal_size_bytes': wal_size,
+            'wal_size_mb': wal_size / 1024 / 1024,
         }
 
-    # Calculate total
+    # Calculate total cache usage
     total_bytes = sum(r.get('size_bytes', 0) for r in report.values())
-    report['total'] = {
+    report['cache_total'] = {
         'size_bytes': total_bytes,
-        'size_mb': total_bytes / 1024 / 1024
+        'size_mb': total_bytes / 1024 / 1024,
+        'size_gb': total_bytes / (1024 ** 3),
+    }
+
+    # Add volume disk space info
+    report['volume'] = get_volume_disk_space(base_smartgallery_path)
+
+    # Add storage health status
+    report['health'] = get_storage_health(base_smartgallery_path)
+
+    # Add configuration info
+    report['config'] = {
+        'zip_retention_hours': ZIP_RETENTION_HOURS,
+        'smashcut_retention_hours': SMASHCUT_RETENTION_HOURS,
+        'warning_threshold': STORAGE_WARNING_THRESHOLD,
+        'critical_threshold': STORAGE_CRITICAL_THRESHOLD,
+        'emergency_threshold': STORAGE_EMERGENCY_THRESHOLD,
     }
 
     return report

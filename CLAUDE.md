@@ -97,6 +97,12 @@ All settings are configured via environment variables with fallback values in th
 - `MAINTENANCE_INTERVAL_HOURS`: Hours between scheduled maintenance (default: 6)
 - `ZIP_RETENTION_HOURS`: Hours to keep ZIP files (default: 24)
 - `SMASHCUT_RETENTION_HOURS`: Hours to keep smashcut output (default: 168 = 7 days)
+- `STORAGE_WARNING_THRESHOLD`: Disk usage % to trigger warning (default: 80)
+- `STORAGE_CRITICAL_THRESHOLD`: Disk usage % to trigger critical alert (default: 90)
+- `STORAGE_EMERGENCY_THRESHOLD`: Disk usage % to trigger auto-cleanup (default: 95)
+- `THUMBNAIL_FORMAT`: Thumbnail format 'webp' or 'jpeg' (default: webp)
+- `THUMBNAIL_QUALITY`: Thumbnail quality 1-100 (default: 70 for webp, 80 for jpeg)
+- `ZIP_COMPRESSION_LEVEL`: ZIP compression 0-9 (default: 6)
 
 ## API Endpoints
 

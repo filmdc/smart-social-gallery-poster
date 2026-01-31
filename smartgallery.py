@@ -89,8 +89,25 @@ SERVER_PORT = int(os.environ.get('PORT', os.environ.get('SERVER_PORT', 8189)))
 # Width (in pixels) of the generated thumbnails.
 THUMBNAIL_WIDTH = int(os.environ.get('THUMBNAIL_WIDTH', 300))
 
+# Thumbnail format: 'webp' (smaller files) or 'jpeg' (faster, more compatible)
+THUMBNAIL_FORMAT = os.environ.get('THUMBNAIL_FORMAT', 'webp').lower()
+if THUMBNAIL_FORMAT not in ('webp', 'jpeg', 'jpg'):
+    THUMBNAIL_FORMAT = 'webp'
+
+# Thumbnail quality (1-100). Lower = smaller files, less quality.
+# Recommended: 60-75 for webp, 70-85 for jpeg
+THUMBNAIL_QUALITY = int(os.environ.get('THUMBNAIL_QUALITY', 70 if THUMBNAIL_FORMAT == 'webp' else 80))
+
 # Assumed frame rate for animated WebP files.
 WEBP_ANIMATED_FPS = float(os.environ.get('WEBP_ANIMATED_FPS', 16.0))
+
+# ZIP compression level (0-9). Higher = smaller files but slower.
+# 0 = store only (no compression), 6 = default, 9 = maximum compression
+ZIP_COMPRESSION_LEVEL = int(os.environ.get('ZIP_COMPRESSION_LEVEL', 6))
+if ZIP_COMPRESSION_LEVEL < 0:
+    ZIP_COMPRESSION_LEVEL = 0
+elif ZIP_COMPRESSION_LEVEL > 9:
+    ZIP_COMPRESSION_LEVEL = 9
 
 # Maximum number of files to load initially before showing a "Load more" button.  
 # Use a very large number (e.g., 9999999) for "infinite" loading.
@@ -931,24 +948,48 @@ def analyze_file_metadata(filepath):
     return details
 
 def create_thumbnail(filepath, file_hash, file_type):
+    """
+    Create a thumbnail for an image or video file.
+    Uses THUMBNAIL_FORMAT (webp/jpeg) and THUMBNAIL_QUALITY settings for compression.
+    WebP typically produces 25-35% smaller files than JPEG at similar visual quality.
+    """
+    # Determine output format and extension
+    thumb_fmt = THUMBNAIL_FORMAT if THUMBNAIL_FORMAT in ('webp', 'jpeg') else 'webp'
+    thumb_ext = 'webp' if thumb_fmt == 'webp' else 'jpeg'
+    thumb_quality = THUMBNAIL_QUALITY
+
     if file_type in ['image', 'animated_image']:
         try:
             with Image.open(filepath) as img:
-                fmt = 'gif' if img.format == 'GIF' else 'webp' if img.format == 'WEBP' else 'jpeg'
-                cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{fmt}")
+                # For animated images, preserve format for animation
                 if file_type == 'animated_image' and getattr(img, 'is_animated', False):
+                    anim_fmt = 'gif' if img.format == 'GIF' else 'webp'
+                    cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{anim_fmt}")
                     frames = [fr.copy() for fr in ImageSequence.Iterator(img)]
                     if frames:
-                        for frame in frames: frame.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
+                        for frame in frames:
+                            frame.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
                         processed_frames = [frame.convert('RGBA').convert('RGB') for frame in frames]
                         if processed_frames:
-                            processed_frames[0].save(cache_path, save_all=True, append_images=processed_frames[1:], duration=img.info.get('duration', 100), loop=img.info.get('loop', 0), optimize=True)
+                            processed_frames[0].save(
+                                cache_path, save_all=True, append_images=processed_frames[1:],
+                                duration=img.info.get('duration', 100), loop=img.info.get('loop', 0),
+                                optimize=True, quality=thumb_quality if anim_fmt == 'webp' else None
+                            )
+                    return cache_path
                 else:
+                    # Static image thumbnail
+                    cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{thumb_ext}")
                     img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                    if img.mode != 'RGB': img = img.convert('RGB')
-                    img.save(cache_path, 'JPEG', quality=85)
-                return cache_path
-        except Exception as e: print(f"ERROR (Pillow): Could not create thumbnail for {os.path.basename(filepath)}: {e}")
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    if thumb_fmt == 'webp':
+                        img.save(cache_path, 'WEBP', quality=thumb_quality, method=4)  # method 4 = good compression/speed balance
+                    else:
+                        img.save(cache_path, 'JPEG', quality=thumb_quality, optimize=True)
+                    return cache_path
+        except Exception as e:
+            print(f"ERROR (Pillow): Could not create thumbnail for {os.path.basename(filepath)}: {e}")
     elif file_type == 'video':
         try:
             cap = cv2.VideoCapture(filepath)
@@ -960,13 +1001,17 @@ def create_thumbnail(filepath, file_hash, file_type):
             success, frame = cap.read()
             cap.release()
             if success and frame is not None:
-                cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.jpeg")
+                cache_path = os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.{thumb_ext}")
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(frame_rgb)
                 img.thumbnail((THUMBNAIL_WIDTH, THUMBNAIL_WIDTH * 2), Image.Resampling.LANCZOS)
-                img.save(cache_path, 'JPEG', quality=80)
+                if thumb_fmt == 'webp':
+                    img.save(cache_path, 'WEBP', quality=thumb_quality, method=4)
+                else:
+                    img.save(cache_path, 'JPEG', quality=thumb_quality, optimize=True)
                 return cache_path
-        except Exception as e: print(f"ERROR (OpenCV): Could not create thumbnail for {os.path.basename(filepath)}: {e}")
+        except Exception as e:
+            print(f"ERROR (OpenCV): Could not create thumbnail for {os.path.basename(filepath)}: {e}")
     return None
 
 def process_single_file(filepath):
@@ -1990,11 +2035,12 @@ def background_zip_task(job_id, file_ids):
             zip_jobs[job_id] = {'status': 'error', 'message': 'No valid files found.'}
             return
 
-        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Use configurable compression level (compresslevel requires Python 3.7+)
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED, compresslevel=ZIP_COMPRESSION_LEVEL) as zf:
             for file_row in files_to_zip:
                 file_path = file_row['path']
                 file_name = file_row['name']
-                # Check the file esists 
+                # Check the file exists
                 if os.path.exists(file_path):
                     # Add file to zip
                     zf.write(file_path, file_name)
@@ -2958,14 +3004,26 @@ def background_smashcut_task(job_id, video_ids, options):
         if fps != 'original':
             cmd.extend(['-r', str(fps)])
 
-        # Quality handling
+        # Quality handling with compression presets
+        # Quality levels balance visual quality vs file size:
+        # - 'minimal': Very small files, lower quality (social media draft, previews)
+        # - 'low': Small files, acceptable quality (quick sharing)
+        # - 'medium': Balanced quality/size (default, general use)
+        # - 'high': Good quality, larger files (final output)
+        # - 'best': Maximum quality, largest files (archival)
         quality = options.get('quality', 'medium')
-        crf_map = {'low': 28, 'medium': 23, 'high': 18}
-        crf = crf_map.get(quality, 23)
-        cmd.extend(['-c:v', 'libx264', '-crf', str(crf), '-preset', 'medium'])
+        compression_presets = {
+            'minimal': {'crf': 32, 'preset': 'faster', 'audio_bitrate': '96k'},
+            'low': {'crf': 28, 'preset': 'fast', 'audio_bitrate': '128k'},
+            'medium': {'crf': 23, 'preset': 'medium', 'audio_bitrate': '192k'},
+            'high': {'crf': 18, 'preset': 'slow', 'audio_bitrate': '256k'},
+            'best': {'crf': 15, 'preset': 'slower', 'audio_bitrate': '320k'},
+        }
+        preset = compression_presets.get(quality, compression_presets['medium'])
+        cmd.extend(['-c:v', 'libx264', '-crf', str(preset['crf']), '-preset', preset['preset']])
 
-        # Audio settings
-        cmd.extend(['-c:a', 'aac', '-b:a', '192k'])
+        # Audio settings (configurable based on quality)
+        cmd.extend(['-c:a', 'aac', '-b:a', preset['audio_bitrate']])
 
         cmd.append(output_path)
 
