@@ -1199,6 +1199,27 @@ def get_dynamic_folder_config(force_refresh=False):
         # Update root folder's has_files status
         dynamic_config['_root_']['has_files'] = folder_has_files.get('', False)
 
+        # Calculate is_empty recursively (a folder is empty only if it has no files
+        # AND all its subfolders are also empty)
+        def calc_is_empty(folder_key):
+            folder = dynamic_config[folder_key]
+            # If folder has files directly, it's not empty
+            if folder['has_files']:
+                folder['is_empty'] = False
+                # Still need to calculate children
+                for child_key in folder.get('children', []):
+                    calc_is_empty(child_key)
+                return False
+            # Check all children recursively
+            all_children_empty = True
+            for child_key in folder.get('children', []):
+                if not calc_is_empty(child_key):
+                    all_children_empty = False
+            folder['is_empty'] = all_children_empty
+            return all_children_empty
+
+        calc_is_empty('_root_')
+
     except FileNotFoundError:
         print(f"WARNING: The base directory '{BASE_OUTPUT_PATH}' was not found.")
 

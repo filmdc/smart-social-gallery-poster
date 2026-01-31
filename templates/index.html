@@ -3185,7 +3185,7 @@
             const folderIcon = '📁';
             const isSharePointFolder = sharepointFolderNames.includes(folderName);
             const spBadge = isSharePointFolder ? '<span class="sp-folder-badge" title="Synced from SharePoint">SP</span>' : '';
-            const isEmpty = folder.has_files === false;
+            const isEmpty = folder.is_empty === true;  // Empty only if folder AND all subfolders have no files
             const emptyIndicator = isEmpty ? '<span class="empty-folder-indicator">(empty)</span>' : '';
             const isFavorite = userFavoriteFolders.has(folderKey);
             const favoriteBtn = socialEnabled && folderKey !== '_root_' ?
