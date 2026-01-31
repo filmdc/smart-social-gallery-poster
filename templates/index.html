@@ -2984,8 +2984,12 @@
                 </div>
                 <div style="padding-top:0.25rem;">
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 0.5rem 0;">All Folders (incl. SharePoint)</p>
+                    <button id="rescan-all-folders-missing-btn"
+                        style="width:100%;background:var(--primary-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">🔍 Scan Missing Only</button>
+                    <button id="rescan-all-folders-recent-btn"
+                        style="width:100%;margin-top:0.5rem;background:var(--workflow-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">⏱️ Rescan Outdated (> 1h)</button>
                     <button id="rescan-all-folders-btn"
-                        style="width:100%;background:var(--success-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">🌐 Rescan All Folders</button>
+                        style="width:100%;margin-top:0.5rem;background:var(--success-color);color:white;border:none;padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">🌐 Rescan Everything</button>
                 </div>
                 <button id="rescan-cancel-btn"
                     style="margin-top:0.5rem;background:var(--surface-hover);color:var(--text-color);border:1px solid var(--border-color);padding:0.6rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.9rem;">Cancel</button>
@@ -4599,6 +4603,8 @@ async function showNodeSummary(event, fileId) {
         const rescanRecentBtn = document.getElementById('rescan-recent-btn');
         const rescanAllBtn = document.getElementById('rescan-all-btn');
         const rescanAllFoldersBtn = document.getElementById('rescan-all-folders-btn');
+        const rescanAllFoldersMissingBtn = document.getElementById('rescan-all-folders-missing-btn');
+        const rescanAllFoldersRecentBtn = document.getElementById('rescan-all-folders-recent-btn');
         const rescanCancelBtn = document.getElementById('rescan-cancel-btn');
 
         function showRescanModal() {
@@ -4637,16 +4643,21 @@ async function showNodeSummary(event, fileId) {
                 });
         }
 
-        function performRescanAllFolders() {
+        function performRescanAllFolders(mode = 'all') {
             hideRescanModal();
-            showNotification('Rescanning all folders (including SharePoint)...', 'info');
+            const modeLabels = {
+                'missing': 'Scanning for missing files/thumbnails...',
+                'recent': 'Rescanning outdated files...',
+                'all': 'Rescanning all files...'
+            };
+            showNotification(modeLabels[mode] || 'Rescanning...', 'info');
 
             // Show sync overlay
             const syncOverlay = document.getElementById('sync-overlay');
             const syncMessage = document.getElementById('sync-message');
             const syncProgressFill = document.getElementById('sync-progress-fill');
             syncOverlay.style.display = 'flex';
-            syncMessage.textContent = 'Rescanning all folders...';
+            syncMessage.textContent = modeLabels[mode] || 'Rescanning all folders...';
             syncProgressFill.style.width = '100%';
             syncProgressFill.style.backgroundColor = 'var(--success-color)';
             syncProgressFill.classList.add('indeterminate');
@@ -4654,7 +4665,7 @@ async function showNodeSummary(event, fileId) {
             fetch('/galleryout/rescan_all_folders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'all' })
+                body: JSON.stringify({ mode: mode })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -4820,7 +4831,9 @@ async function showNodeSummary(event, fileId) {
             document.getElementById('rescan-folder-btn').addEventListener('click', showRescanModal);
             rescanRecentBtn.addEventListener('click', () => performRescan('recent'));
             rescanAllBtn.addEventListener('click', () => performRescan('all'));
-            rescanAllFoldersBtn.addEventListener('click', performRescanAllFolders);
+            rescanAllFoldersMissingBtn.addEventListener('click', () => performRescanAllFolders('missing'));
+            rescanAllFoldersRecentBtn.addEventListener('click', () => performRescanAllFolders('recent'));
+            rescanAllFoldersBtn.addEventListener('click', () => performRescanAllFolders('all'));
             rescanCancelBtn.addEventListener('click', hideRescanModal);
             document.getElementById('main-select-all-btn').addEventListener('click', selectAll);
             document.getElementById('create-folder-btn').addEventListener('click', createFolder);
