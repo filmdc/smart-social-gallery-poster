@@ -1133,15 +1133,32 @@ def get_dynamic_folder_config(force_refresh=False):
             'relative_path': '',
             'parent': None,
             'children': [],
-            'mtime': root_mtime
+            'mtime': root_mtime,
+            'has_files': False  # Will be updated after scanning
         }
     }
 
+    # Valid media extensions for file detection
+    valid_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.jfif', '.tiff',
+                        '.mp4', '.mkv', '.webm', '.mov', '.avi',
+                        '.mp3', '.wav', '.ogg', '.flac',
+                        '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'}
+
     try:
         all_folders = {}
-        for dirpath, dirnames, _ in os.walk(BASE_OUTPUT_PATH):
+        folder_has_files = {}  # Track which folders have files
+
+        for dirpath, dirnames, filenames in os.walk(BASE_OUTPUT_PATH):
             # Exclude system/cache folders and hidden folders (starting with .)
             dirnames[:] = [d for d in dirnames if d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME] and not d.startswith('.')]
+
+            # Check if current directory has any valid media files
+            rel_dir = os.path.relpath(dirpath, BASE_OUTPUT_PATH).replace('\\', '/')
+            if rel_dir == '.':
+                rel_dir = ''
+            has_files = any(os.path.splitext(f)[1].lower() in valid_extensions for f in filenames)
+            folder_has_files[rel_dir] = has_files
+
             for dirname in dirnames:
                 full_path = os.path.normpath(os.path.join(dirpath, dirname)).replace('\\', '/')
                 relative_path = os.path.relpath(full_path, BASE_OUTPUT_PATH).replace('\\', '/')
@@ -1154,7 +1171,8 @@ def get_dynamic_folder_config(force_refresh=False):
                     'full_path': full_path,
                     'folder_name': dirname,  # Original filesystem name for operations
                     'display_name': format_folder_display_name(dirname),  # User-friendly name
-                    'mtime': mtime
+                    'mtime': mtime,
+                    'has_files': folder_has_files.get(relative_path, False)
                 }
 
         sorted_paths = sorted(all_folders.keys(), key=lambda x: x.count('/'))
@@ -1175,11 +1193,16 @@ def get_dynamic_folder_config(force_refresh=False):
                 'relative_path': rel_path,
                 'parent': parent_key,
                 'children': [],
-                'mtime': folder_data['mtime']
+                'mtime': folder_data['mtime'],
+                'has_files': folder_data['has_files']
             }
+
+        # Update root folder's has_files status
+        dynamic_config['_root_']['has_files'] = folder_has_files.get('', False)
+
     except FileNotFoundError:
         print(f"WARNING: The base directory '{BASE_OUTPUT_PATH}' was not found.")
-    
+
     folder_config_cache = dynamic_config
     return dynamic_config
     

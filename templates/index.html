@@ -402,6 +402,30 @@
             opacity: 0.8;
         }
 
+        /* Empty folder styling */
+        .folder-item.is-empty {
+            opacity: 0.6;
+        }
+
+        .folder-item.is-empty:hover {
+            opacity: 0.85;
+        }
+
+        .folder-item.is-empty.active {
+            opacity: 1;
+        }
+
+        .empty-folder-indicator {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            margin-left: 4px;
+            font-style: italic;
+        }
+
+        .folder-item.active .empty-folder-indicator {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
         .folder-actions {
             margin-left: auto;
             display: flex;
@@ -3161,14 +3185,16 @@
             const folderIcon = '📁';
             const isSharePointFolder = sharepointFolderNames.includes(folderName);
             const spBadge = isSharePointFolder ? '<span class="sp-folder-badge" title="Synced from SharePoint">SP</span>' : '';
+            const isEmpty = folder.has_files === false;
+            const emptyIndicator = isEmpty ? '<span class="empty-folder-indicator">(empty)</span>' : '';
             const isFavorite = userFavoriteFolders.has(folderKey);
             const favoriteBtn = socialEnabled && folderKey !== '_root_' ?
                 `<button class="folder-action-btn folder-fav-btn ${isFavorite ? 'is-favorite' : ''}" title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}" data-action="favorite" onclick="toggleFolderFavorite(event, '${folderKey}')">${isFavorite ? '⭐' : '☆'}</button>` : '';
             let itemHTML;
             if (isMovePanel) {
-                itemHTML = ` <div class="folder-item"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> <button class="move-here-btn" data-folder-key="${folderKey}" title="Move here" ${folderKey === currentFolderKey ? 'disabled' : ''}>➜</button> </div>`;
+                itemHTML = ` <div class="folder-item ${isEmpty ? 'is-empty' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${emptyIndicator}${spBadge}</span> <button class="move-here-btn" data-folder-key="${folderKey}" title="Move here" ${folderKey === currentFolderKey ? 'disabled' : ''}>➜</button> </div>`;
             } else {
-                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> <div class="folder-actions">${favoriteBtn}${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button>` : ''}</div> </div>`;
+                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''} ${isEmpty ? 'is-empty' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${emptyIndicator}${spBadge}</span> <div class="folder-actions">${favoriteBtn}${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button>` : ''}</div> </div>`;
             }
             return `<li data-folder-key="${folderKey}" data-folder-name="${folderDisplayName.toLowerCase()}" class="${isCollapsed ? 'collapsed' : ''} ${!hasChildren ? 'no-children' : ''}">${itemHTML}${hasChildren ? `<ul>${childrenHTML}</ul>` : ''}</li>`;
         }
