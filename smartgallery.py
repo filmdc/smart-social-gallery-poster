@@ -1935,10 +1935,15 @@ def rescan_all_folders():
                         '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'}
 
     try:
-        folders = get_dynamic_folder_config()
-        print(f"INFO: Found {len(folders)} folders in config")
+        # Scan from base path to get all files in one pass (avoid duplicate processing)
+        base_path = BASE_OUTPUT_PATH
+        print(f"INFO: Scanning from base path: {base_path}")
+
+        if not os.path.exists(base_path):
+            print(f"ERROR: Base path does not exist: {base_path}")
+            return jsonify({'status': 'error', 'message': f'Base path does not exist: {base_path}'}), 400
+
         total_rescanned = 0
-        folder_results = {}
 
         with get_db_connection() as conn:
             # Get existing file scan times from database
@@ -1948,90 +1953,93 @@ def rescan_all_folders():
                 existing_files[row['path']] = row['last_scanned']
             print(f"INFO: Found {len(existing_files)} existing files in database")
 
-            for folder_key, folder_info in folders.items():
-                folder_path = folder_info['path']
-                if not os.path.exists(folder_path):
-                    print(f"WARNING: Folder path does not exist: {folder_path}")
-                    continue
+            # Walk entire directory tree from base path (single pass)
+            all_files = []
+            for root, dirs, files in os.walk(base_path):
+                # Skip hidden/cache directories
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for filename in files:
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext in media_extensions:
+                        all_files.append(os.path.join(root, filename))
 
-                # Walk directory tree recursively to find all media files
-                all_files = []
-                for root, dirs, files in os.walk(folder_path):
-                    # Skip hidden/cache directories
-                    dirs[:] = [d for d in dirs if not d.startswith('.')]
-                    for filename in files:
-                        ext = os.path.splitext(filename)[1].lower()
-                        if ext in media_extensions:
-                            all_files.append(os.path.join(root, filename))
+            print(f"INFO: Found {len(all_files)} total media files")
 
-                print(f"INFO: Found {len(all_files)} media files in '{folder_info.get('display_name', folder_key)}'")
+            # Filter based on mode
+            files_to_process = []
+            current_time = time.time()
 
-                # Filter based on mode
-                files_to_process = []
-                current_time = time.time()
+            if mode == 'recent':
+                # Only files not scanned in the last hour
+                cutoff_time = current_time - 3600
+                files_to_process = [
+                    f for f in all_files
+                    if existing_files.get(f, 0) < cutoff_time
+                ]
+            elif mode == 'missing':
+                # Only files not in database or missing thumbnails
+                for f in all_files:
+                    if f not in existing_files:
+                        files_to_process.append(f)
+                    else:
+                        # Check if thumbnail exists
+                        try:
+                            mtime = os.path.getmtime(f)
+                            file_hash = hashlib.md5((f + str(mtime)).encode()).hexdigest()
+                            if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*")):
+                                files_to_process.append(f)
+                        except OSError:
+                            pass
+            else:
+                # 'all' mode - process everything
+                files_to_process = all_files
 
-                if mode == 'recent':
-                    # Only files not scanned in the last hour
-                    cutoff_time = current_time - 3600
-                    files_to_process = [
-                        f for f in all_files
-                        if existing_files.get(f, 0) < cutoff_time
-                    ]
-                elif mode == 'missing':
-                    # Only files not in database or missing thumbnails
-                    for f in all_files:
-                        if f not in existing_files:
-                            files_to_process.append(f)
-                        else:
-                            # Check if thumbnail exists
-                            try:
-                                mtime = os.path.getmtime(f)
-                                file_hash = hashlib.md5((f + str(mtime)).encode()).hexdigest()
-                                if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*")):
-                                    files_to_process.append(f)
-                            except OSError:
-                                pass
-                else:
-                    # 'all' mode - process everything
-                    files_to_process = all_files
+            print(f"INFO: {len(files_to_process)} files to process (mode={mode})")
 
-                print(f"INFO: {len(files_to_process)} files to process in '{folder_info.get('display_name', folder_key)}' (mode={mode})")
+            if not files_to_process:
+                print("INFO: No files need processing")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'No files needed rescanning.',
+                    'count': 0,
+                    'folders': {}
+                })
 
-                if not files_to_process:
-                    continue
+            print(f"INFO: Starting to process {len(files_to_process)} files...")
 
-                display_name = folder_info.get('display_name', folder_key)
-                print(f"INFO: Rescanning {len(files_to_process)} files in '{display_name}' (including subfolders)...")
+            # Process in batches to commit incrementally and provide progress
+            batch_size = 50
+            all_results = []
+            processed_count = 0
 
-                results = []
-                processed_count = 0
+            for i in range(0, len(files_to_process), batch_size):
+                batch = files_to_process[i:i + batch_size]
+                batch_results = []
+
                 with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
-                    futures = {executor.submit(process_single_file, fp): fp for fp in files_to_process}
+                    futures = {executor.submit(process_single_file, fp): fp for fp in batch}
                     for future in concurrent.futures.as_completed(futures):
                         result = future.result()
                         if result:
-                            results.append(result)
+                            batch_results.append(result)
                         processed_count += 1
-                        if processed_count % 100 == 0:
-                            print(f"INFO: Processed {processed_count}/{len(files_to_process)} files in '{display_name}'...")
 
-                print(f"INFO: Completed processing {len(results)} files in '{display_name}'")
-
-                if results:
+                # Commit batch to database immediately
+                if batch_results:
                     conn.executemany(
                         "INSERT OR REPLACE INTO files (id, path, mtime, name, type, duration, dimensions, has_workflow, size, last_scanned, models, loras, input_files, media_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        results
+                        batch_results
                     )
                     conn.commit()
-                    total_rescanned += len(results)
-                    folder_results[display_name] = len(results)
+                    total_rescanned += len(batch_results)
+
+                print(f"INFO: Processed {processed_count}/{len(files_to_process)} files ({processed_count * 100 // len(files_to_process)}%)")
 
         print(f"INFO: Rescan complete. Total files rescanned: {total_rescanned}")
         return jsonify({
             'status': 'success',
-            'message': f'Rescanned {total_rescanned} files across {len(folder_results)} folders (including subfolders).',
-            'count': total_rescanned,
-            'folders': folder_results
+            'message': f'Rescanned {total_rescanned} files.',
+            'count': total_rescanned
         })
 
     except Exception as e:
