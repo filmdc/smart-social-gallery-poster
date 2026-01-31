@@ -226,14 +226,14 @@ class User(UserMixin):
             conn.close()
 
 
-def init_login_manager(app, db_path):
+def init_login_manager(app, db_path, site_name='Smart Asset Gallery'):
     """Initialize flask-login with the Flask app."""
     global _db_path
     _db_path = db_path
 
     login_manager.init_app(app)
     login_manager.login_view = 'social.login'
-    login_manager.login_message = 'Please log in to access Smart Asset Gallery.'
+    login_manager.login_message = f'Please log in to access {site_name}.'
     login_manager.login_message_category = 'info'
 
     @login_manager.user_loader

@@ -15,7 +15,7 @@ social_bp = Blueprint('social', __name__, url_prefix='/galleryout/social',
                        template_folder='../templates/social')
 
 
-def init_social(app, db_path):
+def init_social(app, db_path, site_name='Smart Asset Gallery'):
     """Initialize the social features: register blueprint, set up login manager, create tables."""
     if not SOCIAL_FEATURES_ENABLED:
         return False
@@ -24,7 +24,7 @@ def init_social(app, db_path):
     from social.models import create_social_tables
     from social.routes import register_routes
 
-    init_login_manager(app, db_path)
+    init_login_manager(app, db_path, site_name=site_name)
     create_social_tables(db_path)
     register_routes(social_bp, db_path)
     app.register_blueprint(social_bp)

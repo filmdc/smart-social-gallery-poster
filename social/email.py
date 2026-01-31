@@ -19,11 +19,18 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
 SMTP_FROM_EMAIL = os.environ.get('SMTP_FROM_EMAIL', SMTP_USER)
-SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME', 'Smart Asset Gallery')
+# Use SITE_NAME from environment for email sender name (with fallback to SMTP_FROM_NAME)
+_DEFAULT_SITE_NAME = os.environ.get('SITE_NAME', 'Smart Asset Gallery')
+SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME', _DEFAULT_SITE_NAME)
 SMTP_USE_TLS = os.environ.get('SMTP_USE_TLS', 'true').lower() == 'true'
 
 # App URL for links in emails
 APP_URL = os.environ.get('APP_URL', 'http://localhost:8189')
+
+
+def get_site_name():
+    """Get the configured site name for email content."""
+    return os.environ.get('SITE_NAME', 'Smart Asset Gallery')
 
 
 def email_configured():
@@ -98,13 +105,14 @@ def send_registration_request_notification(admin_emails, requester_name, request
         requester_email: Email of the person requesting access
         request_reason: Reason provided for the access request
     """
-    subject = f"[Smart Asset Gallery] New Access Request from {requester_name}"
+    site_name = get_site_name()
+    subject = f"[{site_name}] New Access Request from {requester_name}"
 
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2 style="color: #2c5282;">New Access Request</h2>
-        <p>A new user has requested access to Smart Asset Gallery:</p>
+        <p>A new user has requested access to {site_name}:</p>
 
         <table style="border-collapse: collapse; margin: 20px 0;">
             <tr>
@@ -145,7 +153,8 @@ def send_registration_approved(user_email, user_name, login_url=None):
     if login_url is None:
         login_url = f"{APP_URL}/galleryout/social/login"
 
-    subject = "[Smart Asset Gallery] Your Access Request Has Been Approved"
+    site_name = get_site_name()
+    subject = f"[{site_name}] Your Access Request Has Been Approved"
 
     html_body = f"""
     <html>
@@ -153,7 +162,7 @@ def send_registration_approved(user_email, user_name, login_url=None):
         <h2 style="color: #38a169;">Access Approved!</h2>
         <p>Hi {user_name},</p>
 
-        <p>Great news! Your request for access to Smart Asset Gallery has been approved.</p>
+        <p>Great news! Your request for access to {site_name} has been approved.</p>
 
         <p>You can now log in using your email address and the password you created during registration.</p>
 
@@ -178,7 +187,8 @@ def send_registration_denied(user_email, user_name, reason=None):
     """
     Send notification to user that their registration was denied.
     """
-    subject = "[Smart Asset Gallery] Your Access Request"
+    site_name = get_site_name()
+    subject = f"[{site_name}] Your Access Request"
 
     reason_text = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
 
@@ -188,7 +198,7 @@ def send_registration_denied(user_email, user_name, reason=None):
         <h2 style="color: #e53e3e;">Access Request Not Approved</h2>
         <p>Hi {user_name},</p>
 
-        <p>Unfortunately, your request for access to Smart Asset Gallery was not approved at this time.</p>
+        <p>Unfortunately, your request for access to {site_name} was not approved at this time.</p>
 
         {reason_text}
 
@@ -210,7 +220,8 @@ def send_password_reset(user_email, user_name, reset_token, expires_hours=24):
     """
     reset_url = f"{APP_URL}/galleryout/social/reset-password?token={reset_token}"
 
-    subject = "[Smart Asset Gallery] Password Reset Request"
+    site_name = get_site_name()
+    subject = f"[{site_name}] Password Reset Request"
 
     html_body = f"""
     <html>
@@ -218,7 +229,7 @@ def send_password_reset(user_email, user_name, reset_token, expires_hours=24):
         <h2 style="color: #2c5282;">Password Reset</h2>
         <p>Hi {user_name},</p>
 
-        <p>We received a request to reset your password for Smart Asset Gallery.</p>
+        <p>We received a request to reset your password for {site_name}.</p>
 
         <p>Click the button below to set a new password:</p>
 

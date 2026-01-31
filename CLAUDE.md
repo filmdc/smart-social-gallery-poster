@@ -104,6 +104,29 @@ All settings are configured via environment variables with fallback values in th
 - `THUMBNAIL_QUALITY`: Thumbnail quality 1-100 (default: 70 for webp, 80 for jpeg)
 - `ZIP_COMPRESSION_LEVEL`: ZIP compression 0-9 (default: 6)
 
+### White Label / Branding
+The application supports white-labeling to customize the site name and logo:
+- `SITE_NAME`: The name displayed throughout the application (default: "Smart Asset Gallery")
+- `SITE_TAGLINE`: Optional tagline/subtitle shown on login page and startup banner (default: empty)
+- `SITE_LOGO_PATH`: Path to a custom logo image file (PNG, JPG, SVG, WebP, GIF). Can be absolute or relative to `BASE_SMARTGALLERY_PATH`. If not set, no logo is displayed.
+
+The branding is automatically applied to:
+- All page titles
+- Login page header
+- Main gallery sidebar header
+- Startup console banner
+- Email notifications (subjects and body text)
+- System dialog boxes (error/warning messages)
+
+Example:
+```bash
+export SITE_NAME="My Company Assets"
+export SITE_TAGLINE="Marketing Team Asset Library"
+export SITE_LOGO_PATH="/path/to/logo.png"
+```
+
+The logo is served via the `/galleryout/branding/logo` endpoint and is accessible without authentication.
+
 ## API Endpoints
 
 Key routes (all prefixed with `/galleryout/`):
