@@ -270,12 +270,47 @@ def print_configuration():
 # --- SOCIAL FEATURES ---
 SOCIAL_FEATURES_ENABLED = os.environ.get('SOCIAL_FEATURES_ENABLED', 'true').lower() == 'true'
 
+# --- WHITE LABEL / BRANDING ---
+# Customize the application name and branding
+# SITE_NAME: The name displayed throughout the application (default: "Smart Asset Gallery")
+# SITE_TAGLINE: Optional tagline/subtitle shown on login and startup (default: organization name or empty)
+# SITE_LOGO_PATH: Path to a custom logo image file (PNG, JPG, SVG). If not set, no logo is displayed.
+#                 The path can be absolute or relative to BASE_SMARTGALLERY_PATH.
+SITE_NAME = os.environ.get('SITE_NAME', 'Smart Asset Gallery')
+SITE_TAGLINE = os.environ.get('SITE_TAGLINE', '')
+SITE_LOGO_PATH = os.environ.get('SITE_LOGO_PATH', '')
+
+def get_branding():
+    """Get the current branding configuration as a dictionary."""
+    logo_url = None
+    if SITE_LOGO_PATH:
+        # Check if logo file exists
+        logo_path = SITE_LOGO_PATH
+        if not os.path.isabs(logo_path):
+            logo_path = os.path.join(BASE_SMARTGALLERY_PATH, logo_path)
+        if os.path.isfile(logo_path):
+            logo_url = '/galleryout/branding/logo'
+
+    return {
+        'site_name': SITE_NAME,
+        'site_tagline': SITE_TAGLINE,
+        'site_logo_url': logo_url,
+        'has_logo': logo_url is not None
+    }
+
 # --- FLASK APP INITIALIZATION ---
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 gallery_view_cache = []
 folder_config_cache = None
 FFPROBE_EXECUTABLE_PATH = None
+
+
+# --- BRANDING CONTEXT PROCESSOR ---
+@app.context_processor
+def inject_branding():
+    """Inject branding variables into all templates."""
+    return {'branding': get_branding()}
 
 
 # Data structures for node categorization and analysis
@@ -1444,7 +1479,7 @@ def initialize_gallery():
     if SOCIAL_FEATURES_ENABLED:
         try:
             from social import init_social
-            social_ok = init_social(app, DATABASE_FILE)
+            social_ok = init_social(app, DATABASE_FILE, site_name=SITE_NAME)
             if social_ok:
                 print(f"{Colors.GREEN}INFO: Social features enabled.{Colors.RESET}")
                 # Initialize scheduler with maintenance support
@@ -1511,6 +1546,7 @@ def require_authentication():
         '/galleryout/social/request-access',
         '/galleryout/social/forgot-password',
         '/galleryout/social/reset-password',
+        '/galleryout/branding/logo',
         '/favicon.ico',
         '/static/',
     ]
@@ -1531,6 +1567,35 @@ def require_authentication():
 
 
 # --- FLASK ROUTES ---
+
+@app.route('/galleryout/branding/logo')
+def serve_branding_logo():
+    """Serve the custom branding logo if configured."""
+    if not SITE_LOGO_PATH:
+        abort(404)
+
+    logo_path = SITE_LOGO_PATH
+    if not os.path.isabs(logo_path):
+        logo_path = os.path.join(BASE_SMARTGALLERY_PATH, logo_path)
+
+    if not os.path.isfile(logo_path):
+        abort(404)
+
+    # Determine content type based on extension
+    ext = os.path.splitext(logo_path)[1].lower()
+    content_types = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif'
+    }
+    mimetype = content_types.get(ext, 'image/png')
+
+    return send_file(logo_path, mimetype=mimetype)
+
+
 @app.route('/galleryout/')
 @app.route('/')
 def gallery_redirect_base():
@@ -3501,8 +3566,9 @@ def print_startup_banner():
                              |___/ {Colors.RESET}
     """
     print(banner)
-    print(f"   {Colors.BOLD}Smart Asset Gallery{Colors.RESET}")
-    print(f"   Community Action Lehigh Valley - Marketing Team")
+    print(f"   {Colors.BOLD}{SITE_NAME}{Colors.RESET}")
+    if SITE_TAGLINE:
+        print(f"   {SITE_TAGLINE}")
     print(f"   Version    : {Colors.YELLOW}{APP_VERSION}{Colors.RESET} ({APP_VERSION_DATE})")
     print(f"   GitHub     : {Colors.CYAN}{GITHUB_REPO_URL}{Colors.RESET}")
     print("")
@@ -3546,7 +3612,7 @@ def show_config_error_and_exit(path):
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        messagebox.showerror("Smart Asset Gallery - Configuration Error", msg)
+        messagebox.showerror(f"{SITE_NAME} - Configuration Error", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
@@ -3572,7 +3638,7 @@ def show_ffmpeg_warning():
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        messagebox.showwarning("Smart Asset Gallery - Feature Limitation", msg)
+        messagebox.showwarning(f"{SITE_NAME} - Feature Limitation", msg)
         root.destroy()
     else:
         # Fallback for headless environments (Docker, etc.)
@@ -3638,7 +3704,7 @@ if __name__ == '__main__':
         else:
             print(f"{Colors.RED}WARNING: FFmpeg not found. Video metadata extraction disabled.{Colors.RESET}")
 
-    print(f"{Colors.GREEN}{Colors.BOLD}🚀 Smart Asset Gallery started successfully!{Colors.RESET}")
+    print(f"{Colors.GREEN}{Colors.BOLD}🚀 {SITE_NAME} started successfully!{Colors.RESET}")
     print(f"👉 Access URL: {Colors.CYAN}{Colors.BOLD}http://127.0.0.1:{SERVER_PORT}/galleryout/{Colors.RESET}")
     print(f"   (Press CTRL+C to stop)")
     

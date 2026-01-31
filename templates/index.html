@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Asset Gallery: {{ current_folder_info.display_name }}</title>
+    <title>{{ branding.site_name }}: {{ current_folder_info.display_name }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='galleryout/favicon.ico') }}">
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.css" rel="stylesheet">
     <style>
@@ -2638,8 +2638,11 @@
     <div id="notification-container"></div>
     <aside class="sidebar">
         <div class="sidebar-header">
-            <a href="{{ url_for('gallery_view', folder_key='_root_') }}" style="text-decoration: none;">
-                <h1>Smart Asset Gallery</h1>
+            <a href="{{ url_for('gallery_view', folder_key='_root_') }}" style="text-decoration: none; display: flex; align-items: center; gap: 10px;">
+                {% if branding.has_logo %}
+                <img src="{{ branding.site_logo_url }}" alt="{{ branding.site_name }}" style="max-height: 40px; max-width: 60px; object-fit: contain;">
+                {% endif %}
+                <h1>{{ branding.site_name }}</h1>
             </a>
             <div class="sidebar-actions">
                 <button id="sidebar-expand-btn" title="Expand Sidebar">

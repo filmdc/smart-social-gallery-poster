@@ -1282,11 +1282,15 @@ def register_routes(bp, db_path):
         if not to_email:
             return jsonify({'success': False, 'error': 'Please provide an email address'})
 
+        # Get site name for email branding
+        from social.email import get_site_name
+        site_name = get_site_name()
+
         # Send test email
-        html_body = """
+        html_body = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <h2 style="color: #2c5282;">Test Email from Smart Asset Gallery</h2>
+            <h2 style="color: #2c5282;">Test Email from {site_name}</h2>
             <p>This is a test email to confirm your SMTP configuration is working correctly.</p>
             <p style="color: #718096; font-size: 0.9em; margin-top: 30px;">
                 If you received this email, your email settings are configured properly.
@@ -1297,7 +1301,7 @@ def register_routes(bp, db_path):
 
         success, error = send_email(
             to_email,
-            "[Smart Asset Gallery] Test Email",
+            f"[{site_name}] Test Email",
             html_body
         )
 
