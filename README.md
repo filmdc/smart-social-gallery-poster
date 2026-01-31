@@ -301,6 +301,17 @@ Automatic cleanup runs periodically to prevent disk space issues from cache grow
 | `MAINTENANCE_INTERVAL_HOURS` | Hours between scheduled maintenance runs | `6` |
 | `ZIP_RETENTION_HOURS` | Hours to keep ZIP download cache files | `24` |
 | `SMASHCUT_RETENTION_HOURS` | Hours to keep smashcut output files | `168` (7 days) |
+| `STORAGE_WARNING_THRESHOLD` | Disk usage % to trigger warning status | `80` |
+| `STORAGE_CRITICAL_THRESHOLD` | Disk usage % to trigger critical alert | `90` |
+| `STORAGE_EMERGENCY_THRESHOLD` | Disk usage % to trigger auto-cleanup | `95` |
+
+**Compression Settings:**
+
+| Variable | Description | Default |
+|---|---|---|
+| `THUMBNAIL_FORMAT` | Thumbnail format: `webp` (smaller) or `jpeg` (faster) | `webp` |
+| `THUMBNAIL_QUALITY` | Thumbnail quality 1-100 (lower = smaller files) | `70` (webp) / `80` (jpeg) |
+| `ZIP_COMPRESSION_LEVEL` | ZIP compression level 0-9 (higher = smaller but slower) | `6` |
 
 **What gets cleaned:**
 - **ZIP cache**: Temporary batch download files (`.zip_downloads/`)

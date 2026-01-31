@@ -55,6 +55,13 @@ def init_scheduler(db_path, app_secret_key, base_smartgallery_path=None):
                           misfire_grace_time=3600)
         logger.info(f"Scheduled maintenance task added (every {MAINTENANCE_INTERVAL_HOURS} hours)")
 
+        # Add storage health check (runs hourly, triggers cleanup if needed)
+        _scheduler.add_job(_check_storage_health, 'interval',
+                          hours=1,
+                          id='storage_health_check',
+                          misfire_grace_time=300)
+        logger.info("Storage health check added (every hour)")
+
     _scheduler.start()
 
 
@@ -362,6 +369,22 @@ def _run_scheduled_maintenance():
         logger.warning(f"Maintenance module not available: {e}")
     except Exception as e:
         logger.error(f"Scheduled maintenance error: {e}")
+
+
+def _check_storage_health():
+    """Check storage health and trigger automatic cleanup if needed."""
+    if not _base_smartgallery_path or not _db_path:
+        return
+
+    try:
+        from maintenance import check_storage_and_auto_cleanup
+        result = check_storage_and_auto_cleanup(_base_smartgallery_path, _db_path)
+        if result.get('action_taken'):
+            logger.info(f"Storage health check triggered: {result['action_taken']}")
+    except ImportError as e:
+        logger.warning(f"Maintenance module not available: {e}")
+    except Exception as e:
+        logger.error(f"Storage health check error: {e}")
 
 
 def trigger_maintenance(aggressive=False):
