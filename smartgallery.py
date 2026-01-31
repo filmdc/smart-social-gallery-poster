@@ -1166,13 +1166,12 @@ def get_dynamic_folder_config(force_refresh=False):
                     mtime = os.path.getmtime(full_path)
                 except OSError:
                     mtime = time.time()
-                
+
                 all_folders[relative_path] = {
                     'full_path': full_path,
                     'folder_name': dirname,  # Original filesystem name for operations
                     'display_name': format_folder_display_name(dirname),  # User-friendly name
-                    'mtime': mtime,
-                    'has_files': folder_has_files.get(relative_path, False)
+                    'mtime': mtime
                 }
 
         sorted_paths = sorted(all_folders.keys(), key=lambda x: x.count('/'))
@@ -1194,7 +1193,7 @@ def get_dynamic_folder_config(force_refresh=False):
                 'parent': parent_key,
                 'children': [],
                 'mtime': folder_data['mtime'],
-                'has_files': folder_data['has_files']
+                'has_files': folder_has_files.get(rel_path, False)  # Look up after walk is complete
             }
 
         # Update root folder's has_files status
