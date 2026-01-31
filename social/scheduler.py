@@ -363,7 +363,7 @@ def _run_scheduled_maintenance():
         return
 
     try:
-        from maintenance import scheduled_maintenance_task
+        from social.maintenance import scheduled_maintenance_task
         scheduled_maintenance_task(_base_smartgallery_path, _db_path)
     except ImportError as e:
         logger.warning(f"Maintenance module not available: {e}")
@@ -377,7 +377,7 @@ def _check_storage_health():
         return
 
     try:
-        from maintenance import check_storage_and_auto_cleanup
+        from social.maintenance import check_storage_and_auto_cleanup
         result = check_storage_and_auto_cleanup(_base_smartgallery_path, _db_path)
         if result.get('action_taken'):
             logger.info(f"Storage health check triggered: {result['action_taken']}")
@@ -401,7 +401,7 @@ def trigger_maintenance(aggressive=False):
         return None
 
     try:
-        from maintenance import run_all_maintenance
+        from social.maintenance import run_all_maintenance
         return run_all_maintenance(_base_smartgallery_path, _db_path, aggressive=aggressive)
     except ImportError as e:
         logger.warning(f"Maintenance module not available: {e}")
