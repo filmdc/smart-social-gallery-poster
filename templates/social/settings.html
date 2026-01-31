@@ -885,7 +885,7 @@
 
         <!-- Storage Management (Admin Only) -->
         <div class="section" id="storage-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
                 <h2 style="margin-bottom:0;">Storage Management</h2>
                 <div style="display:flex;gap:0.5rem;">
                     <button class="btn btn-secondary btn-sm" onclick="refreshStorageStatus()">Refresh</button>
@@ -893,6 +893,7 @@
                     <button class="btn btn-danger btn-sm" onclick="runMaintenance(true)" title="Use shorter retention periods for emergency cleanup">Emergency Cleanup</button>
                 </div>
             </div>
+            <div id="storage-timestamp" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem;font-family:monospace;"></div>
 
             <!-- Volume Status -->
             <div id="storage-health" style="margin-bottom:1rem;padding:1rem;border-radius:8px;background:var(--glass-bg);border:1px solid var(--glass-border);">
@@ -1498,6 +1499,15 @@
             const usage = data.usage;
             const health = usage.health;
             const volume = usage.volume;
+
+            // Update timestamp
+            const now = new Date();
+            const timestamp = now.toLocaleDateString('en-US', {
+                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
+            }) + ' ' + now.toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+            });
+            document.getElementById('storage-timestamp').textContent = 'Last updated: ' + timestamp;
 
             // Update health display
             healthPercent.textContent = health.percent_used.toFixed(1) + '%';
