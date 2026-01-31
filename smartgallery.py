@@ -1927,6 +1927,8 @@ def rescan_all_folders():
     data = request.json or {}
     mode = data.get('mode', 'all')  # 'all', 'recent', or 'missing'
 
+    print(f"INFO: Starting rescan_all_folders with mode='{mode}'")
+
     # Supported media extensions
     media_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif',
                         '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv', '.flv',
@@ -1934,6 +1936,7 @@ def rescan_all_folders():
 
     try:
         folders = get_dynamic_folder_config()
+        print(f"INFO: Found {len(folders)} folders in config")
         total_rescanned = 0
         folder_results = {}
 
@@ -1943,10 +1946,12 @@ def rescan_all_folders():
             rows = conn.execute("SELECT path, last_scanned FROM files").fetchall()
             for row in rows:
                 existing_files[row['path']] = row['last_scanned']
+            print(f"INFO: Found {len(existing_files)} existing files in database")
 
             for folder_key, folder_info in folders.items():
                 folder_path = folder_info['path']
                 if not os.path.exists(folder_path):
+                    print(f"WARNING: Folder path does not exist: {folder_path}")
                     continue
 
                 # Walk directory tree recursively to find all media files
@@ -1958,6 +1963,8 @@ def rescan_all_folders():
                         ext = os.path.splitext(filename)[1].lower()
                         if ext in media_extensions:
                             all_files.append(os.path.join(root, filename))
+
+                print(f"INFO: Found {len(all_files)} media files in '{folder_info.get('display_name', folder_key)}'")
 
                 # Filter based on mode
                 files_to_process = []
@@ -1977,13 +1984,18 @@ def rescan_all_folders():
                             files_to_process.append(f)
                         else:
                             # Check if thumbnail exists
-                            mtime = os.path.getmtime(f)
-                            file_hash = hashlib.md5((f + str(mtime)).encode()).hexdigest()
-                            if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*")):
-                                files_to_process.append(f)
+                            try:
+                                mtime = os.path.getmtime(f)
+                                file_hash = hashlib.md5((f + str(mtime)).encode()).hexdigest()
+                                if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*")):
+                                    files_to_process.append(f)
+                            except OSError:
+                                pass
                 else:
                     # 'all' mode - process everything
                     files_to_process = all_files
+
+                print(f"INFO: {len(files_to_process)} files to process in '{folder_info.get('display_name', folder_key)}' (mode={mode})")
 
                 if not files_to_process:
                     continue
@@ -1992,12 +2004,18 @@ def rescan_all_folders():
                 print(f"INFO: Rescanning {len(files_to_process)} files in '{display_name}' (including subfolders)...")
 
                 results = []
+                processed_count = 0
                 with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
                     futures = {executor.submit(process_single_file, fp): fp for fp in files_to_process}
                     for future in concurrent.futures.as_completed(futures):
                         result = future.result()
                         if result:
                             results.append(result)
+                        processed_count += 1
+                        if processed_count % 100 == 0:
+                            print(f"INFO: Processed {processed_count}/{len(files_to_process)} files in '{display_name}'...")
+
+                print(f"INFO: Completed processing {len(results)} files in '{display_name}'")
 
                 if results:
                     conn.executemany(
@@ -2008,6 +2026,7 @@ def rescan_all_folders():
                     total_rescanned += len(results)
                     folder_results[display_name] = len(results)
 
+        print(f"INFO: Rescan complete. Total files rescanned: {total_rescanned}")
         return jsonify({
             'status': 'success',
             'message': f'Rescanned {total_rescanned} files across {len(folder_results)} folders (including subfolders).',
