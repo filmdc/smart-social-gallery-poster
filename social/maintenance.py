@@ -563,17 +563,21 @@ def vacuum_database(database_file):
 
 def get_disk_usage_report(base_smartgallery_path, database_file):
     """
-    Generate a comprehensive report of disk usage including volume info and cache directories.
+    Generate a comprehensive report of disk usage including volume info, cache directories,
+    and media file breakdown.
 
     Args:
         base_smartgallery_path: Base path for gallery storage
         database_file: Path to the SQLite database
 
     Returns:
-        dict with size information for each cache type and volume info
+        dict with size information for each category and volume info
     """
     cache_dirs = get_cache_dirs(base_smartgallery_path)
     report = {}
+
+    # Track cache directory paths to exclude from media scan
+    cache_paths = set(cache_dirs.values())
 
     for name, path in cache_dirs.items():
         if not os.path.exists(path):
@@ -635,15 +639,94 @@ def get_disk_usage_report(base_smartgallery_path, database_file):
         }
 
     # Calculate total cache usage
-    total_bytes = sum(r.get('size_bytes', 0) for r in report.values())
+    total_cache_bytes = sum(r.get('size_bytes', 0) for r in report.values())
     report['cache_total'] = {
-        'size_bytes': total_bytes,
-        'size_mb': total_bytes / 1024 / 1024,
-        'size_gb': total_bytes / (1024 ** 3),
+        'size_bytes': total_cache_bytes,
+        'size_mb': total_cache_bytes / 1024 / 1024,
+        'size_gb': total_cache_bytes / (1024 ** 3),
+    }
+
+    # Scan media files (excluding cache directories)
+    # Group by type: images, videos, audio, other
+    media_stats = {
+        'images': {'size_bytes': 0, 'file_count': 0, 'extensions': {}},
+        'videos': {'size_bytes': 0, 'file_count': 0, 'extensions': {}},
+        'audio': {'size_bytes': 0, 'file_count': 0, 'extensions': {}},
+        'other': {'size_bytes': 0, 'file_count': 0, 'extensions': {}},
+    }
+
+    image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg'}
+    video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv', '.flv', '.mpeg', '.mpg'}
+    audio_exts = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma'}
+
+    try:
+        for root, dirs, files in os.walk(base_smartgallery_path):
+            # Skip cache directories
+            root_path = os.path.normpath(root)
+            skip = False
+            for cache_path in cache_paths:
+                if root_path == os.path.normpath(cache_path) or root_path.startswith(os.path.normpath(cache_path) + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                try:
+                    file_size = os.path.getsize(filepath)
+                    ext = os.path.splitext(filename)[1].lower()
+
+                    if ext in image_exts:
+                        category = 'images'
+                    elif ext in video_exts:
+                        category = 'videos'
+                    elif ext in audio_exts:
+                        category = 'audio'
+                    else:
+                        category = 'other'
+
+                    media_stats[category]['size_bytes'] += file_size
+                    media_stats[category]['file_count'] += 1
+                    media_stats[category]['extensions'][ext] = media_stats[category]['extensions'].get(ext, 0) + 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+    # Add media stats to report
+    for category, stats in media_stats.items():
+        report[f'media_{category}'] = {
+            'exists': True,
+            'size_bytes': stats['size_bytes'],
+            'size_mb': stats['size_bytes'] / 1024 / 1024,
+            'size_gb': stats['size_bytes'] / (1024 ** 3),
+            'file_count': stats['file_count'],
+            'top_extensions': sorted(stats['extensions'].items(), key=lambda x: x[1], reverse=True)[:5],
+        }
+
+    # Calculate total media usage
+    total_media_bytes = sum(media_stats[cat]['size_bytes'] for cat in media_stats)
+    report['media_total'] = {
+        'size_bytes': total_media_bytes,
+        'size_mb': total_media_bytes / 1024 / 1024,
+        'size_gb': total_media_bytes / (1024 ** 3),
+        'file_count': sum(media_stats[cat]['file_count'] for cat in media_stats),
     }
 
     # Add volume disk space info
     report['volume'] = get_volume_disk_space(base_smartgallery_path)
+
+    # Calculate "other system" usage (volume used - media - cache)
+    volume_used = report['volume'].get('used_bytes', 0)
+    accounted_for = total_cache_bytes + total_media_bytes
+    other_system = max(0, volume_used - accounted_for)
+    report['other_system'] = {
+        'size_bytes': other_system,
+        'size_mb': other_system / 1024 / 1024,
+        'size_gb': other_system / (1024 ** 3),
+        'description': 'OS, apps, logs, and other system files',
+    }
 
     # Add storage health status
     report['health'] = get_storage_health(base_smartgallery_path)
