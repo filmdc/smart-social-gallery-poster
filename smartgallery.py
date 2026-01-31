@@ -1361,9 +1361,9 @@ def initialize_gallery():
             social_ok = init_social(app, DATABASE_FILE)
             if social_ok:
                 print(f"{Colors.GREEN}INFO: Social features enabled.{Colors.RESET}")
-                # Initialize scheduler
+                # Initialize scheduler with maintenance support
                 from social.scheduler import init_scheduler
-                init_scheduler(DATABASE_FILE, SECRET_KEY)
+                init_scheduler(DATABASE_FILE, SECRET_KEY, BASE_SMARTGALLERY_PATH)
             else:
                 print(f"{Colors.YELLOW}INFO: Social features disabled (init returned False).{Colors.RESET}")
         except ImportError as e:
@@ -1390,6 +1390,20 @@ def initialize_gallery():
         pass
     except Exception as e:
         print(f"{Colors.YELLOW}WARNING: SharePoint init failed: {e}{Colors.RESET}")
+
+    # Run startup maintenance if enabled (for system recovery after disk issues)
+    try:
+        from maintenance import STARTUP_MAINTENANCE, run_startup_maintenance
+        if STARTUP_MAINTENANCE:
+            print(f"{Colors.YELLOW}INFO: Running startup maintenance (STARTUP_MAINTENANCE=true)...{Colors.RESET}")
+            results = run_startup_maintenance(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
+            if results and not results.get('skipped'):
+                freed_mb = results.get('summary', {}).get('total_freed_mb', 0)
+                print(f"{Colors.GREEN}INFO: Startup maintenance freed {freed_mb:.1f}MB{Colors.RESET}")
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"{Colors.YELLOW}WARNING: Startup maintenance failed: {e}{Colors.RESET}")
 
 
 # --- AUTHENTICATION PROTECTION ---

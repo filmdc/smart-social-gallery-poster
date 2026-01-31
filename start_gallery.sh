@@ -30,6 +30,13 @@ export SERVER_PORT=8189
 # export SHAREPOINT_LIBRARY_NAME="Documents"
 # export SHAREPOINT_SYNC_INTERVAL="300"
 
+# --- Maintenance Settings ---
+# export STARTUP_MAINTENANCE="false"       # Run intensive cleanup on startup (for recovery)
+# export AGGRESSIVE_CLEANUP="false"        # Use shorter retention periods
+# export MAINTENANCE_INTERVAL_HOURS="6"    # Hours between scheduled maintenance
+# export ZIP_RETENTION_HOURS="24"          # Hours to keep ZIP download cache
+# export SMASHCUT_RETENTION_HOURS="168"    # Hours to keep smashcut output (168 = 7 days)
+
 # Launch Smart Asset Gallery
 echo "Starting Smart Asset Gallery..."
 echo "Access URL: http://127.0.0.1:8189/galleryout/"

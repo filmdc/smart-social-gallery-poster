@@ -290,6 +290,31 @@ Connect a SharePoint Online document library as a gallery asset source.
 4. Set the 4 required environment variables above
 5. Use the "Test Connection" button in Settings to verify
 
+### Maintenance & Cleanup
+
+Automatic cleanup runs periodically to prevent disk space issues from cache growth.
+
+| Variable | Description | Default |
+|---|---|---|
+| `STARTUP_MAINTENANCE` | Run intensive cleanup on startup (for system recovery) | `false` |
+| `AGGRESSIVE_CLEANUP` | Use shorter retention periods for cleanup | `false` |
+| `MAINTENANCE_INTERVAL_HOURS` | Hours between scheduled maintenance runs | `6` |
+| `ZIP_RETENTION_HOURS` | Hours to keep ZIP download cache files | `24` |
+| `SMASHCUT_RETENTION_HOURS` | Hours to keep smashcut output files | `168` (7 days) |
+
+**What gets cleaned:**
+- **ZIP cache**: Temporary batch download files (`.zip_downloads/`)
+- **Smashcut output**: Generated video files (`.smashcut_output/`)
+- **Orphaned thumbnails**: Thumbnails for deleted/moved files (`.thumbnails_cache/`)
+- **SharePoint cache**: Files no longer tracked in database (`.sharepoint_cache/`)
+- **Database**: WAL checkpoint and VACUUM for space reclamation
+
+**Manual maintenance:** Admins can trigger cleanup via API:
+- `GET /galleryout/social/maintenance/status` - View cache disk usage
+- `POST /galleryout/social/maintenance/run` - Run cleanup (add `?aggressive=true` for intensive cleanup)
+
+**Recovery from disk full:** Set `STARTUP_MAINTENANCE=true` to run aggressive cleanup on next restart.
+
 ---
 ## Reverse Proxy Setup
 
