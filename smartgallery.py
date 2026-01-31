@@ -1438,7 +1438,7 @@ def initialize_gallery():
 
     # Run startup maintenance if enabled (for system recovery after disk issues)
     try:
-        from maintenance import STARTUP_MAINTENANCE, run_startup_maintenance
+        from social.maintenance import STARTUP_MAINTENANCE, run_startup_maintenance
         if STARTUP_MAINTENANCE:
             print(f"{Colors.YELLOW}INFO: Running startup maintenance (STARTUP_MAINTENANCE=true)...{Colors.RESET}")
             results = run_startup_maintenance(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
