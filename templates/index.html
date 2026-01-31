@@ -29,7 +29,7 @@
             --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
             --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
             --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
-            --sidebar-width: 320px;
+            --sidebar-width: 280px;
             --gallery-column-size: 320px;
         }
 
@@ -125,7 +125,7 @@
         }
 
         body.sidebar-expanded .sidebar {
-            min-width: 600px;
+            min-width: 400px;
         }
 
         .main-content {
@@ -306,11 +306,100 @@
             flex-grow: 1;
             text-decoration: none;
             color: inherit;
+            margin-left: 25px;
+            cursor: pointer;
+            /* Allow wrapping by default for better readability */
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.3;
+        }
+
+        /* When sidebar is not expanded, use ellipsis truncation */
+        body:not(.sidebar-expanded) .folder-link {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-left: 25px;
-            cursor: pointer;
+        }
+
+        /* When expanded, allow full folder names */
+        body.sidebar-expanded .folder-link {
+            white-space: normal;
+        }
+
+        /* Favorite folders section */
+        .favorite-folders-section {
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .favorite-folders-header {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            padding: 0 0.25rem;
+        }
+
+        .favorite-folders-list {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .favorite-folder-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+            gap: 4px;
+        }
+
+        .favorite-folder-item:hover {
+            background-color: var(--surface-hover);
+        }
+
+        .favorite-folder-item.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .favorite-folder-link {
+            flex-grow: 1;
+            text-decoration: none;
+            color: inherit;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .no-favorites {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            padding: 0.5rem;
+            text-align: center;
+            font-style: italic;
+        }
+
+        /* Favorite button styling */
+        .folder-fav-btn {
+            opacity: 0.5;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .folder-fav-btn:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        .folder-fav-btn.is-favorite {
+            opacity: 1;
+            color: var(--favorite-color);
+        }
+
+        .folder-item:hover .folder-fav-btn {
+            opacity: 0.8;
         }
 
         .folder-actions {
@@ -2537,6 +2626,14 @@
                 </button>
             </div>
         </div>
+        {% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}
+        <div class="favorite-folders-section">
+            <div class="favorite-folders-header">
+                <span>⭐ My Favorites</span>
+            </div>
+            <div id="favorite-folders-list" class="favorite-folders-list"></div>
+        </div>
+        {% endif %}
         <div class="folder-controls">
             <input type="search" class="folder-search-input" id="folder-search-nav" placeholder="🔍 Search folders...">
             <div class="folder-sort-buttons" id="folder-sort-nav">
@@ -2957,6 +3054,7 @@
         const currentFolderKey = '{{ current_folder_key }}';
         const ancestorKeys = {{ ancestor_keys | tojson }};
         const socialEnabled = {% if social_enabled is defined and social_enabled and current_user is defined and current_user.is_authenticated %}true{% else %}false{% endif %};
+        let userFavoriteFolders = new Set({{ user_favorite_folders | default([]) | tojson }});
         // Platform limits for social media
         const PLATFORM_LIMITS = {
             instagram: { maxImages: 10, maxVideos: 1, name: 'Instagram' },
@@ -2990,6 +3088,38 @@
         function showNotification(message, type = 'info') { const container = document.getElementById('notification-container'); if (!container) return; const notification = document.createElement('div'); notification.className = `notification ${type}`; notification.textContent = message; container.appendChild(notification); setTimeout(() => { notification.classList.add('show'); }, 10); setTimeout(() => { notification.classList.remove('show'); notification.addEventListener('transitionend', () => notification.remove()); }, 3000); }
         function handleError(error) { console.error('API Error:', error); showNotification(error.message || 'An unexpected network error occurred.', 'error'); }
         function handleGenericResponse(response) { return response.json().then(data => { if (!response.ok) { throw new Error(data.message || `HTTP error! status: ${response.status}`); } if (data.status === 'success' || data.status === 'partial_success') { showNotification(data.message || 'Action completed successfully!', 'success'); setTimeout(() => window.location.reload(), 1200); } else { throw new Error(data.message || 'An unspecified error occurred.'); } }).catch(handleError); }
+
+        // Toggle folder favorite status
+        function toggleFolderFavorite(event, folderKey) {
+            event.stopPropagation();
+            event.preventDefault();
+            if (!socialEnabled) {
+                showNotification('Please log in to use favorites', 'warning');
+                return;
+            }
+            fetch('/galleryout/social/preferences/toggle_folder_favorite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder_key: folderKey })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.is_favorite) {
+                        userFavoriteFolders.add(folderKey);
+                        showNotification('Folder added to favorites', 'success');
+                    } else {
+                        userFavoriteFolders.delete(folderKey);
+                        showNotification('Folder removed from favorites', 'success');
+                    }
+                    renderAllTrees();
+                    renderFavoriteFolders();
+                } else {
+                    showNotification(data.error || 'Failed to update favorite', 'error');
+                }
+            })
+            .catch(handleError);
+        }
 
         function sortChildren(folder, sortKey, direction) {
             if (!folder.children || folder.children.length === 0) return [];
@@ -3027,14 +3157,18 @@
             }
 
             const folderDisplayName = folder.display_name;
+            const folderName = folder.folder_name || folder.display_name;  // Original filesystem name for operations
             const folderIcon = '📁';
-            const isSharePointFolder = sharepointFolderNames.includes(folderDisplayName);
+            const isSharePointFolder = sharepointFolderNames.includes(folderName);
             const spBadge = isSharePointFolder ? '<span class="sp-folder-badge" title="Synced from SharePoint">SP</span>' : '';
+            const isFavorite = userFavoriteFolders.has(folderKey);
+            const favoriteBtn = socialEnabled && folderKey !== '_root_' ?
+                `<button class="folder-action-btn folder-fav-btn ${isFavorite ? 'is-favorite' : ''}" title="${isFavorite ? 'Remove from favorites' : 'Add to favorites'}" data-action="favorite" onclick="toggleFolderFavorite(event, '${folderKey}')">${isFavorite ? '⭐' : '☆'}</button>` : '';
             let itemHTML;
             if (isMovePanel) {
                 itemHTML = ` <div class="folder-item"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> <button class="move-here-btn" data-folder-key="${folderKey}" title="Move here" ${folderKey === currentFolderKey ? 'disabled' : ''}>➜</button> </div>`;
             } else {
-                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> ${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<div class="folder-actions"> <button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderDisplayName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button> </div>` : ''} </div>`;
+                itemHTML = ` <div class="folder-item ${isActive ? 'active' : ''}"> <span class="toggle-btn ${!hasChildren ? 'empty' : ''}"></span> <span class="folder-link navigation-link" data-folder-url="/galleryout/view/${folderKey}" title="${folderDisplayName}">${folderIcon} ${folderDisplayName}${spBadge}</span> <div class="folder-actions">${favoriteBtn}${(folderKey !== '_root_' && !protectedFolderKeys.includes(folderKey)) ? `<button class="folder-action-btn" title="Rename" data-action="rename" data-name="${folderName}">✏️</button> <button class="folder-action-btn" title="Delete" data-action="delete" data-name="${folderDisplayName}">🗑️</button>` : ''}</div> </div>`;
             }
             return `<li data-folder-key="${folderKey}" data-folder-name="${folderDisplayName.toLowerCase()}" class="${isCollapsed ? 'collapsed' : ''} ${!hasChildren ? 'no-children' : ''}">${itemHTML}${hasChildren ? `<ul>${childrenHTML}</ul>` : ''}</li>`;
         }
@@ -3042,6 +3176,34 @@
         function renderAllTrees() {
             document.getElementById('folder-tree-nav').innerHTML = buildFolderTreeHTML('_root_', false);
             filterTree('folder-tree-nav', currentSearch.nav, false);
+            renderFavoriteFolders();
+        }
+
+        function renderFavoriteFolders() {
+            const container = document.getElementById('favorite-folders-list');
+            if (!container) return;
+
+            if (!socialEnabled || userFavoriteFolders.size === 0) {
+                container.innerHTML = '<div class="no-favorites">No favorite folders yet. Click the star on any folder to add it here.</div>';
+                return;
+            }
+
+            let html = '';
+            userFavoriteFolders.forEach(folderKey => {
+                const folder = foldersData[folderKey];
+                if (!folder) return;
+                const isActive = folderKey === currentFolderKey;
+                html += `
+                    <div class="favorite-folder-item ${isActive ? 'active' : ''}">
+                        <a href="/galleryout/view/${folderKey}" class="favorite-folder-link" title="${folder.display_name}">
+                            📁 ${folder.display_name}
+                        </a>
+                        <button class="folder-action-btn folder-fav-btn is-favorite" title="Remove from favorites" onclick="toggleFolderFavorite(event, '${folderKey}')">⭐</button>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html || '<div class="no-favorites">No favorite folders yet.</div>';
         }
 
         function filterTree(treeId, searchTerm, saveState = true) {
