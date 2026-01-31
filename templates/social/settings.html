@@ -1486,6 +1486,12 @@
         .then(data => {
             if (!data.success) {
                 healthStatus.textContent = 'Error: ' + (data.error || 'Unknown error');
+                healthStatus.style.color = 'var(--danger-color)';
+                // Show traceback for debugging if available
+                if (data.traceback) {
+                    cacheBreakdown.innerHTML = '<pre style="font-size:0.75rem;color:var(--text-muted);overflow:auto;max-height:200px;background:var(--bg-color);padding:0.5rem;border-radius:4px;">' +
+                        data.traceback.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+                }
                 return;
             }
 

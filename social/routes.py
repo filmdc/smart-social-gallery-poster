@@ -1892,10 +1892,20 @@ def register_routes(bp, db_path):
                 'success': True,
                 'usage': report
             })
-        except ImportError:
-            return jsonify({'success': False, 'error': 'Maintenance module not available'}), 500
+        except ImportError as e:
+            import traceback
+            return jsonify({
+                'success': False,
+                'error': f'Maintenance module not available: {str(e)}',
+                'traceback': traceback.format_exc()
+            }), 500
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            import traceback
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }), 500
 
     @bp.route('/maintenance/run', methods=['POST'])
     @login_required
