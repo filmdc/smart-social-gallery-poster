@@ -207,6 +207,21 @@ def key_to_path(key):
         return base64.urlsafe_b64decode(key.encode()).decode().replace('/', os.sep)
     except Exception: return None
 
+def format_folder_display_name(folder_name):
+    """Convert folder name to user-friendly display name.
+
+    - Replaces underscores with spaces
+    - Strips leading numbers and underscores (e.g., '3_Fall_Sale' -> 'Fall Sale')
+    """
+    import re
+    # Strip leading number prefixes like "3_", "11_", etc.
+    name = re.sub(r'^\d+[_\s]+', '', folder_name)
+    # Replace underscores with spaces
+    name = name.replace('_', ' ')
+    # Clean up multiple spaces
+    name = ' '.join(name.split())
+    return name if name else folder_name
+
 # --- DERIVED SETTINGS ---
 DB_SCHEMA_VERSION = 28
 THUMBNAIL_CACHE_DIR = os.path.join(BASE_SMARTGALLERY_PATH, THUMBNAIL_CACHE_FOLDER_NAME)
@@ -1112,19 +1127,21 @@ def get_dynamic_folder_config(force_refresh=False):
 
     dynamic_config = {
         '_root_': {
+            'folder_name': 'Main',  # Original name (same as display for root)
             'display_name': 'Main',
             'path': base_path_normalized,
             'relative_path': '',
             'parent': None,
             'children': [],
-            'mtime': root_mtime 
+            'mtime': root_mtime
         }
     }
 
     try:
         all_folders = {}
         for dirpath, dirnames, _ in os.walk(BASE_OUTPUT_PATH):
-            dirnames[:] = [d for d in dirnames if d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME]]
+            # Exclude system/cache folders and hidden folders (starting with .)
+            dirnames[:] = [d for d in dirnames if d not in [THUMBNAIL_CACHE_FOLDER_NAME, SQLITE_CACHE_FOLDER_NAME, ZIP_CACHE_FOLDER_NAME] and not d.startswith('.')]
             for dirname in dirnames:
                 full_path = os.path.normpath(os.path.join(dirpath, dirname)).replace('\\', '/')
                 relative_path = os.path.relpath(full_path, BASE_OUTPUT_PATH).replace('\\', '/')
@@ -1135,7 +1152,8 @@ def get_dynamic_folder_config(force_refresh=False):
                 
                 all_folders[relative_path] = {
                     'full_path': full_path,
-                    'display_name': dirname,
+                    'folder_name': dirname,  # Original filesystem name for operations
+                    'display_name': format_folder_display_name(dirname),  # User-friendly name
                     'mtime': mtime
                 }
 
@@ -1151,7 +1169,8 @@ def get_dynamic_folder_config(force_refresh=False):
                 dynamic_config[parent_key]['children'].append(key)
 
             dynamic_config[key] = {
-                'display_name': folder_data['display_name'],
+                'folder_name': folder_data['folder_name'],  # Original filesystem name
+                'display_name': folder_data['display_name'],  # User-friendly display name
                 'path': folder_data['full_path'],
                 'relative_path': rel_path,
                 'parent': parent_key,
@@ -1714,6 +1733,27 @@ def gallery_view(folder_key):
         except Exception:
             pass  # Table might not exist yet
 
+    # Get user's favorite folders (if logged in)
+    user_favorite_folders = []
+    if SOCIAL_FEATURES_ENABLED:
+        try:
+            from flask_login import current_user
+            if current_user.is_authenticated:
+                from social.models import get_social_db
+                import json
+                social_conn = get_social_db(DATABASE_FILE)
+                try:
+                    row = social_conn.execute(
+                        "SELECT favorite_folders FROM user_preferences WHERE user_id = ?",
+                        (current_user.id,)
+                    ).fetchone()
+                    if row and row['favorite_folders']:
+                        user_favorite_folders = json.loads(row['favorite_folders'])
+                finally:
+                    social_conn.close()
+        except Exception:
+            pass  # User not logged in or table doesn't exist
+
     return render_template('index.html',
                            files=initial_files,
                            total_files=len(gallery_view_cache),
@@ -1735,7 +1775,8 @@ def gallery_view(folder_key):
                            show_favorites=request.args.get('favorites', 'false').lower() == 'true',
                            protected_folder_keys=list(PROTECTED_FOLDER_KEYS),
                            social_enabled=SOCIAL_FEATURES_ENABLED,
-                           sharepoint_folders=list(sharepoint_folders))
+                           sharepoint_folders=list(sharepoint_folders),
+                           user_favorite_folders=user_favorite_folders)
 
 @app.route('/galleryout/upload', methods=['POST'])
 def upload_files():
