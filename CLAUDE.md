@@ -44,9 +44,18 @@ A Flask Blueprint (`/galleryout/social/*`) with:
 - `models.py`: Table creation, schema migration (5 tables: users, social_accounts, posts, post_media, post_platforms)
 - `oauth.py`: OAuth2 flows for Facebook/Instagram/LinkedIn, token encryption
 - `posting.py`: Per-platform publish functions (Graph API, LinkedIn API)
-- `scheduler.py`: APScheduler for scheduled posts + token refresh
-- `routes.py`: All social feature Flask routes
+- `scheduler.py`: APScheduler for scheduled posts, token refresh, and system maintenance
+- `routes.py`: All social feature Flask routes (including maintenance endpoints)
 - `sharepoint.py`: SharePoint document library integration via Microsoft Graph API
+
+### Maintenance Module (`maintenance.py`)
+Handles automatic cleanup of disk-consuming caches:
+- ZIP download cache cleanup (`.zip_downloads/`)
+- Smashcut output cleanup (`.smashcut_output/`)
+- Orphaned thumbnail cleanup (`.thumbnails_cache/`)
+- SharePoint cache cleanup (`.sharepoint_cache/`)
+- SQLite WAL checkpoint and VACUUM operations
+- Startup maintenance for system recovery after disk issues
 
 ### Key Components
 - **Metadata Extraction**: Extracts workflow data from PNG/JPG/WebP metadata and MP4 video tags (requires ffprobe)
@@ -83,6 +92,11 @@ All settings are configured via environment variables with fallback values in th
 - `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`: LinkedIn OAuth credentials
 - `SHAREPOINT_TENANT_ID` / `SHAREPOINT_CLIENT_ID` / `SHAREPOINT_CLIENT_SECRET`: SharePoint integration
 - `SHAREPOINT_SITE_URL` / `SHAREPOINT_LIBRARY_NAME`: SharePoint document library to sync
+- `STARTUP_MAINTENANCE`: Run intensive cleanup on startup for recovery (default: false)
+- `AGGRESSIVE_CLEANUP`: Use shorter retention periods (default: false)
+- `MAINTENANCE_INTERVAL_HOURS`: Hours between scheduled maintenance (default: 6)
+- `ZIP_RETENTION_HOURS`: Hours to keep ZIP files (default: 24)
+- `SMASHCUT_RETENTION_HOURS`: Hours to keep smashcut output (default: 168 = 7 days)
 
 ## API Endpoints
 
@@ -107,3 +121,5 @@ Social routes (all prefixed with `/galleryout/social/`):
 - `GET /oauth/<platform>/authorize|callback`: OAuth flows
 - `GET /sharepoint/status|folders|files`: SharePoint browsing
 - `POST /sharepoint/sync`: Trigger SharePoint sync
+- `GET /maintenance/status`: View cache disk usage (admin only)
+- `POST /maintenance/run`: Trigger maintenance cleanup (admin only, `?aggressive=true` for intensive)

@@ -1877,6 +1877,65 @@ def register_routes(bp, db_path):
         finally:
             conn.close()
 
+    # --- MAINTENANCE ENDPOINTS ---
+
+    @bp.route('/maintenance/status', methods=['GET'])
+    @login_required
+    @admin_required
+    def maintenance_status():
+        """Get cache disk usage and maintenance status (admin only)."""
+        try:
+            from smartgallery import BASE_SMARTGALLERY_PATH, DATABASE_FILE
+            from maintenance import get_disk_usage_report
+            report = get_disk_usage_report(BASE_SMARTGALLERY_PATH, DATABASE_FILE)
+            return jsonify({
+                'success': True,
+                'usage': report
+            })
+        except ImportError:
+            return jsonify({'success': False, 'error': 'Maintenance module not available'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @bp.route('/maintenance/run', methods=['POST'])
+    @login_required
+    @admin_required
+    def run_maintenance():
+        """Trigger maintenance cleanup (admin only).
+
+        Query params:
+            aggressive: If 'true', use shorter retention periods for more aggressive cleanup.
+        """
+        aggressive = request.args.get('aggressive', 'false').lower() == 'true'
+
+        try:
+            from smartgallery import BASE_SMARTGALLERY_PATH, DATABASE_FILE
+            from maintenance import run_all_maintenance
+            results = run_all_maintenance(BASE_SMARTGALLERY_PATH, DATABASE_FILE, aggressive=aggressive)
+
+            if results.get('skipped'):
+                return jsonify({
+                    'success': False,
+                    'error': 'Maintenance already running',
+                    'reason': results.get('reason')
+                }), 409
+
+            return jsonify({
+                'success': True,
+                'results': {
+                    'summary': results.get('summary'),
+                    'zip': results.get('zip'),
+                    'smashcut': results.get('smashcut'),
+                    'thumbnails': results.get('thumbnails'),
+                    'sharepoint': results.get('sharepoint'),
+                    'database': results.get('database'),
+                }
+            })
+        except ImportError:
+            return jsonify({'success': False, 'error': 'Maintenance module not available'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
 
 def _determine_status(action, current_status):
     """Determine new post status based on action."""

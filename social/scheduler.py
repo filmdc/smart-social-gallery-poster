@@ -1,10 +1,11 @@
 """
-Scheduler for timed post publishing and token refresh.
+Scheduler for timed post publishing, token refresh, and system maintenance.
 
 Uses APScheduler BackgroundScheduler running in-process.
 """
 
 import logging
+import os
 import time
 import threading
 
@@ -19,13 +20,24 @@ logger = logging.getLogger(__name__)
 _scheduler = None
 _db_path = None
 _app_secret_key = None
+_base_smartgallery_path = None
+
+# Maintenance interval in hours (default: 6 hours)
+MAINTENANCE_INTERVAL_HOURS = int(os.environ.get('MAINTENANCE_INTERVAL_HOURS', '6'))
 
 
-def init_scheduler(db_path, app_secret_key):
-    """Start the background scheduler with publish and token refresh jobs."""
-    global _scheduler, _db_path, _app_secret_key
+def init_scheduler(db_path, app_secret_key, base_smartgallery_path=None):
+    """Start the background scheduler with publish, token refresh, and maintenance jobs.
+
+    Args:
+        db_path: Path to the database file
+        app_secret_key: Application secret key for token encryption
+        base_smartgallery_path: Base path for gallery storage (for maintenance tasks)
+    """
+    global _scheduler, _db_path, _app_secret_key, _base_smartgallery_path
     _db_path = db_path
     _app_secret_key = app_secret_key
+    _base_smartgallery_path = base_smartgallery_path
 
     _scheduler = BackgroundScheduler(daemon=True)
     _scheduler.add_job(_check_scheduled_posts, 'interval', seconds=60, id='check_scheduled_posts',
@@ -34,6 +46,15 @@ def init_scheduler(db_path, app_secret_key):
                        misfire_grace_time=300)
     _scheduler.add_job(_cleanup_expired_data, 'interval', hours=24, id='cleanup_expired_data',
                        misfire_grace_time=3600)
+
+    # Add maintenance job if base path is provided
+    if base_smartgallery_path:
+        _scheduler.add_job(_run_scheduled_maintenance, 'interval',
+                          hours=MAINTENANCE_INTERVAL_HOURS,
+                          id='system_maintenance',
+                          misfire_grace_time=3600)
+        logger.info(f"Scheduled maintenance task added (every {MAINTENANCE_INTERVAL_HOURS} hours)")
+
     _scheduler.start()
 
 
@@ -327,3 +348,41 @@ def _cleanup_expired_data():
         pass
     finally:
         conn.close()
+
+
+def _run_scheduled_maintenance():
+    """Run scheduled maintenance tasks (cleanup caches, vacuum database)."""
+    if not _base_smartgallery_path or not _db_path:
+        return
+
+    try:
+        from maintenance import scheduled_maintenance_task
+        scheduled_maintenance_task(_base_smartgallery_path, _db_path)
+    except ImportError as e:
+        logger.warning(f"Maintenance module not available: {e}")
+    except Exception as e:
+        logger.error(f"Scheduled maintenance error: {e}")
+
+
+def trigger_maintenance(aggressive=False):
+    """Manually trigger maintenance tasks.
+
+    Args:
+        aggressive: If True, use shorter retention periods for more aggressive cleanup.
+
+    Returns:
+        dict with maintenance results, or None if maintenance module unavailable.
+    """
+    if not _base_smartgallery_path or not _db_path:
+        logger.warning("Cannot run maintenance: paths not configured")
+        return None
+
+    try:
+        from maintenance import run_all_maintenance
+        return run_all_maintenance(_base_smartgallery_path, _db_path, aggressive=aggressive)
+    except ImportError as e:
+        logger.warning(f"Maintenance module not available: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Maintenance error: {e}")
+        return None
