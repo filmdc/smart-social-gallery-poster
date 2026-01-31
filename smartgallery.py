@@ -1923,9 +1923,14 @@ def rescan_folder():
 
 @app.route('/galleryout/rescan_all_folders', methods=['POST'])
 def rescan_all_folders():
-    """Rescan all folders including SharePoint-synced folders."""
+    """Rescan all folders including subfolders recursively."""
     data = request.json or {}
-    mode = data.get('mode', 'all')  # 'all' or 'recent'
+    mode = data.get('mode', 'all')  # 'all', 'recent', or 'missing'
+
+    # Supported media extensions
+    media_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif',
+                        '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv', '.flv',
+                        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'}
 
     try:
         folders = get_dynamic_folder_config()
@@ -1933,35 +1938,58 @@ def rescan_all_folders():
         folder_results = {}
 
         with get_db_connection() as conn:
+            # Get existing file scan times from database
+            existing_files = {}
+            rows = conn.execute("SELECT path, last_scanned FROM files").fetchall()
+            for row in rows:
+                existing_files[row['path']] = row['last_scanned']
+
             for folder_key, folder_info in folders.items():
                 folder_path = folder_info['path']
+                if not os.path.exists(folder_path):
+                    continue
 
-                # Get all files in this folder (not subfolders)
-                query = "SELECT path, last_scanned FROM files WHERE path LIKE ?"
-                params = (folder_path + os.sep + '%',)
-                rows = conn.execute(query, params).fetchall()
+                # Walk directory tree recursively to find all media files
+                all_files = []
+                for root, dirs, files in os.walk(folder_path):
+                    # Skip hidden/cache directories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    for filename in files:
+                        ext = os.path.splitext(filename)[1].lower()
+                        if ext in media_extensions:
+                            all_files.append(os.path.join(root, filename))
 
-                # Filter to only direct children of this folder
-                folder_path_norm = os.path.normpath(folder_path)
-                files_in_folder = [
-                    {'path': row['path'], 'last_scanned': row['last_scanned']}
-                    for row in rows
-                    if os.path.normpath(os.path.dirname(row['path'])) == folder_path_norm
-                ]
-
+                # Filter based on mode
                 files_to_process = []
                 current_time = time.time()
 
                 if mode == 'recent':
+                    # Only files not scanned in the last hour
                     cutoff_time = current_time - 3600
-                    files_to_process = [f['path'] for f in files_in_folder if (f['last_scanned'] or 0) < cutoff_time]
+                    files_to_process = [
+                        f for f in all_files
+                        if existing_files.get(f, 0) < cutoff_time
+                    ]
+                elif mode == 'missing':
+                    # Only files not in database or missing thumbnails
+                    for f in all_files:
+                        if f not in existing_files:
+                            files_to_process.append(f)
+                        else:
+                            # Check if thumbnail exists
+                            mtime = os.path.getmtime(f)
+                            file_hash = hashlib.md5((f + str(mtime)).encode()).hexdigest()
+                            if not glob.glob(os.path.join(THUMBNAIL_CACHE_DIR, f"{file_hash}.*")):
+                                files_to_process.append(f)
                 else:
-                    files_to_process = [f['path'] for f in files_in_folder]
+                    # 'all' mode - process everything
+                    files_to_process = all_files
 
                 if not files_to_process:
                     continue
 
-                print(f"INFO: Rescanning {len(files_to_process)} files in '{folder_info.get('display_name', folder_key)}'...")
+                display_name = folder_info.get('display_name', folder_key)
+                print(f"INFO: Rescanning {len(files_to_process)} files in '{display_name}' (including subfolders)...")
 
                 results = []
                 with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
@@ -1978,11 +2006,11 @@ def rescan_all_folders():
                     )
                     conn.commit()
                     total_rescanned += len(results)
-                    folder_results[folder_info.get('display_name', folder_key)] = len(results)
+                    folder_results[display_name] = len(results)
 
         return jsonify({
             'status': 'success',
-            'message': f'Rescanned {total_rescanned} files across {len(folder_results)} folders.',
+            'message': f'Rescanned {total_rescanned} files across {len(folder_results)} folders (including subfolders).',
             'count': total_rescanned,
             'folders': folder_results
         })
