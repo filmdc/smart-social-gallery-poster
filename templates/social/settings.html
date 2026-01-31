@@ -200,6 +200,78 @@
             font-style: italic;
         }
 
+        /* Branding settings */
+        .branding-form { display: flex; flex-direction: column; gap: 1rem; }
+        .branding-form .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+        .branding-form label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .branding-form input[type="text"] {
+            padding: 0.6rem 1rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .branding-form input[type="text"]:focus {
+            border-color: var(--primary-color);
+        }
+        .branding-form input[type="text"]::placeholder {
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+        .logo-upload-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--glass-bg);
+            border: 1px dashed var(--border-color);
+            border-radius: 8px;
+        }
+        .logo-preview {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .logo-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .logo-preview-placeholder {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-align: center;
+        }
+        .logo-upload-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .logo-upload-actions input[type="file"] { display: none; }
+        .branding-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .env-fallback-note {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: var(--glass-bg);
+            border-radius: 4px;
+        }
+
         .flash-messages { max-width: 900px; margin: 1rem auto; padding: 0 2rem; }
         .flash {
             padding: 0.6rem 1rem;
@@ -574,6 +646,57 @@
     {% endwith %}
 
     <div class="content">
+        <!-- Branding Settings -->
+        <div class="section">
+            <h2>Branding Settings</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                Customize how the application appears to your users. Leave fields empty to use environment variable defaults.
+            </p>
+
+            <div class="branding-form">
+                <div class="form-group">
+                    <label for="site-name">Site Name</label>
+                    <input type="text" id="site-name" name="site_name"
+                           value="{{ db_branding.site_name or '' }}"
+                           placeholder="{{ branding.site_name }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="site-tagline">Tagline / Subtitle</label>
+                    <input type="text" id="site-tagline" name="site_tagline"
+                           value="{{ db_branding.site_tagline or '' }}"
+                           placeholder="{{ branding.site_tagline or 'Optional tagline shown on login page' }}">
+                </div>
+
+                <div class="form-group">
+                    <label>Logo</label>
+                    <div class="logo-upload-area">
+                        <div class="logo-preview" id="logo-preview">
+                            {% if branding.has_logo %}
+                            <img src="{{ branding.site_logo_url }}?t={{ range(1000000) | random }}" alt="Current logo">
+                            {% else %}
+                            <span class="logo-preview-placeholder">No logo</span>
+                            {% endif %}
+                        </div>
+                        <div class="logo-upload-actions">
+                            <input type="file" id="logo-upload" accept=".png,.jpg,.jpeg,.svg,.webp,.gif">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('logo-upload').click()">
+                                {% if branding.has_logo %}Change Logo{% else %}Upload Logo{% endif %}
+                            </button>
+                            {% if branding.has_logo %}
+                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteLogo()">Remove Logo</button>
+                            {% endif %}
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">PNG, JPG, SVG, WebP, GIF</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="branding-actions">
+                    <button type="button" class="btn btn-primary" onclick="saveBrandingSettings()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Connected Accounts -->
         <div class="section">
             <h2>Connected Accounts</h2>
@@ -928,6 +1051,88 @@
     </div>
 
     <script>
+    // =========================================================================
+    // BRANDING SETTINGS
+    // =========================================================================
+
+    function saveBrandingSettings() {
+        const siteName = document.getElementById('site-name').value.trim();
+        const siteTagline = document.getElementById('site-tagline').value.trim();
+
+        fetch('/galleryout/social/settings/branding', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                site_name: siteName,
+                site_tagline: siteTagline
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Branding settings saved! Changes will appear on page reload.');
+                location.reload();
+            } else {
+                alert(data.error || 'Error saving branding settings');
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // Logo upload handler
+    document.addEventListener('DOMContentLoaded', function() {
+        const logoInput = document.getElementById('logo-upload');
+        if (logoInput) {
+            logoInput.addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    uploadLogo(this.files[0]);
+                }
+            });
+        }
+    });
+
+    function uploadLogo(file) {
+        const formData = new FormData();
+        formData.append('logo', file);
+
+        fetch('/galleryout/social/settings/branding/logo', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Logo uploaded successfully!');
+                location.reload();
+            } else {
+                alert(data.error || 'Error uploading logo');
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    function deleteLogo() {
+        if (!confirm('Remove the logo? This cannot be undone.')) return;
+
+        fetch('/galleryout/social/settings/branding/logo', {
+            method: 'DELETE'
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Logo removed successfully!');
+                location.reload();
+            } else {
+                alert(data.error || 'Error removing logo');
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+    }
+
+    // =========================================================================
+    // SOCIAL ACCOUNTS
+    // =========================================================================
+
     function disconnectAccount(accountId) {
         if (!confirm('Disconnect this account?')) return;
         fetch('/galleryout/social/accounts/' + accountId, {method: 'DELETE'})
